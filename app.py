@@ -231,11 +231,14 @@ if FPDF_DISPONIVEL:
         return pdf.output(dest='S').encode('latin1')
 
 # ------------------------------------------------------------------------------------------
-# INJEÇÃO DE CSS DE ADAPTABILIDADE MOBILE
+# INJEÇÃO DE CSS DE ADAPTABILIDADE MOBILE E ESTILIZAÇÃO DO MENU (COR PERSONALIZADA)
 # ------------------------------------------------------------------------------------------
 
+# Nota: O código hexadecimal #2E7D32 representa um verde folha escuro. 
+# Se quiser mudar para laranja no futuro, mude de #2E7D32 para #EF6C00 nas linhas abaixo.
 st.markdown("""
     <style>
+    /* Configuração geral dos botões normais */
     .stButton > button {
         width: 100% !important;
         min-height: 44px !important;
@@ -243,6 +246,20 @@ st.markdown("""
         font-weight: 600 !important;
         margin-bottom: 5px !important;
     }
+    
+    /* Força os botões do tipo 'primary' (ativos no menu) a ficarem VERDES */
+    div[data-testid="stSidebar"] button[kind="primary"] {
+        background-color: #2E7D32 !important;
+        color: white !important;
+        border: 1px solid #2E7D32 !important;
+    }
+    
+    /* Efeito de passar o dedo/mouse por cima do botão ativo */
+    div[data-testid="stSidebar"] button[kind="primary"]:hover {
+        background-color: #1B5E20 !important;
+        border: 1px solid #1B5E20 !important;
+    }
+    
     div[data-testid="column"] {
         padding: 5px !important;
         min-width: 150px !important;
@@ -260,7 +277,6 @@ if "rebanho" not in st.session_state:
 if "visualizar_brinco" not in st.session_state:
     st.session_state.visualizar_brinco = None
 
-# Controle do Menu por botões via Session State
 if "menu_atual" not in st.session_state:
     st.session_state.menu_atual = "Painel Geral (Dashboard)"
 
@@ -270,11 +286,10 @@ st.title("🐑 Sistema de Gerenciamento de Rebanho Ovino")
 st.markdown("---")
 
 # ------------------------------------------------------------------------------------------
-# MENU LATERAL COM BOTÕES
+# MENU LATERAL COM BOTÕES CUSTOMIZADOS
 # ------------------------------------------------------------------------------------------
 st.sidebar.markdown("### 📋 Menu de Navegação")
 
-# Funções auxiliares para mudar de aba limpando focos individuais
 def ir_para_dashboard():
     st.session_state.menu_atual = "Painel Geral (Dashboard)"
     st.session_state.visualizar_brinco = None
@@ -291,7 +306,7 @@ def ir_para_saude():
     st.session_state.menu_atual = "Controle Sanitário/Médico"
     st.session_state.visualizar_brinco = None
 
-# Botões da Barra Lateral com marcadores visuais do botão selecionado
+# Os botões ativos agora usam o estilo primário (que controlamos via CSS para ficar VERDE)
 if st.sidebar.button("📊 Painel Geral (Dashboard)", key="btn_menu_dash", type="primary" if st.session_state.menu_atual == "Painel Geral (Dashboard)" else "secondary"):
     ir_para_dashboard()
     st.rerun()
