@@ -94,6 +94,21 @@ if menu == "Painel Geral (Dashboard)":
             st.markdown(f"**Pai (Reprodutor):** {ficha['pai']}")
             st.markdown(f"**Mãe (Matriz):** {ficha['mae']}")
             st.markdown(f"**Situação Atual:** :green[{ficha['status']}]" if ficha['status'] == "Ativo" else f":red[Baixa ({ficha['status']})]")
+            
+            # Se for um animal baixado (inativo), exibir os detalhes da saída e a opção de reativar
+            if ficha['status'] != "Ativo":
+                st.warning(f"⚠️ **Este animal está inativo (fora do rebanho).**\n\n"
+                           f"**Motivo da Saída:** {ficha['status']}\n\n"
+                           f"**Data da Saída:** {ficha.get('data_saida', 'Não informada')}\n\n"
+                           f"**Detalhes/Observações da Saída:** {ficha.get('motivo_saida', 'Não informado')}")
+                
+                if st.button("🔄 Reativar este Animal (Retornar ao Rebanho)", key=f"reativar_ficha_{id_sel}"):
+                    dados_rebanho[id_sel]["status"] = "Ativo"
+                    dados_rebanho[id_sel]["data_saida"] = ""
+                    dados_rebanho[id_sel]["motivo_saida"] = ""
+                    salvar_dados(dados_rebanho)
+                    st.success(f"O animal {id_sel} foi reativado e agora consta como Ativo no rebanho!")
+                    st.rerun()
         
         with col_direita:
             st.subheader("📝 Observações e Anotações Gerais")
@@ -148,7 +163,7 @@ if menu == "Painel Geral (Dashboard)":
         if not dados_rebanho:
             st.info("Nenhum animal cadastrado no momento. Vá em 'Registrar Entrada' para começar.")
         else:
-            # Filtrar ativos
+            # Filtrar ativos e inativos (baixas)
             ativos = {k: v for k, v in dados_rebanho.items() if v["status"] == "Ativo"}
             baixas = {k: v for k, v in dados_rebanho.items() if v["status"] != "Ativo"}
             
@@ -158,37 +173,83 @@ if menu == "Painel Geral (Dashboard)":
             col2.metric("Total de Baixas (Vendas/Mortes)", len(baixas))
             col3.metric("Total Histórico Registrado", len(dados_rebanho))
             
-            st.subheader("📋 Lista de Animais Ativos no Rebanho")
-            if ativos:
-                # Criando tabela interativa com botões de clique
-                st.markdown("Clique em **🔎 Abrir Ficha** para ver as informações detalhadas, histórico de saúde, crias e observações do ovino.")
-                
-                # Exibição organizada em linhas com colunas do Streamlit
-                # Cabeçalho da tabela
-                c_head = st.columns([1.5, 2, 2, 2, 2])
-                c_head[0].markdown("**Brinco**")
-                c_head[1].markdown("**Raça**")
-                c_head[2].markdown("**Sexo**")
-                c_head[3].markdown("**Idade**")
-                c_head[4].markdown("**Ações**")
-                st.markdown("<hr style='margin: 8px 0;'>", unsafe_allow_html=True)
-                
-                # Dados de cada animal
-                for brinco, ficha in ativos.items():
-                    c_row = st.columns([1.5, 2, 2, 2, 2])
-                    c_row[0].write(brinco)
-                    c_row[1].write(ficha["raca"])
-                    c_row[2].write(ficha["sexo"])
-                    c_row[3].write(calcular_idade(ficha["data_nascimento"]))
+            # Divisão por abas no Dashboard
+            tab_ativos, tab_inativos = st.tabs(["🟢 Animais Ativos", "🔴 Animais Inativos (Baixas)"])
+            
+            # ABA: ANIMAIS ATIVOS
+            with tab_ativos:
+                st.subheader("📋 Lista de Animais Ativos no Rebanho")
+                if ativos:
+                    st.markdown("Clique em **🔎 Abrir Ficha** para ver as informações detalhadas, histórico de saúde, crias e observações do ovino.")
                     
-                    # Botão para abrir a ficha do animal
-                    if c_row[4].button("🔎 Abrir Ficha", key=f"abrir_{brinco}"):
-                        st.session_state.visualizar_brinco = brinco
-                        st.rerun()
+                    # Cabeçalho da tabela de ativos
+                    c_head = st.columns([1.5, 2, 2, 2, 2])
+                    c_head[0].markdown("**Brinco**")
+                    c_head[1].markdown("**Raça**")
+                    c_head[2].markdown("**Sexo**")
+                    c_head[3].markdown("**Idade**")
+                    c_head[4].markdown("**Ações**")
+                    st.markdown("<hr style='margin: 8px 0;'>", unsafe_allow_html=True)
                     
-                    st.markdown("<div style='border-bottom: 1px solid #f0f2f6; margin: 4px 0;'></div>", unsafe_allow_html=True)
-            else:
-                st.warning("Não há animais ativos no momento.")
+                    # Dados de cada animal ativo
+                    for brinco, ficha_at in ativos.items():
+                        c_row = st.columns([1.5, 2, 2, 2, 2])
+                        c_row[0].write(brinco)
+                        c_row[1].write(ficha_at["raca"])
+                        c_row[2].write(ficha_at["sexo"])
+                        c_row[3].write(calcular_idade(ficha_at["data_nascimento"]))
+                        
+                        # Botão para abrir a ficha do animal
+                        if c_row[4].button("🔎 Abrir Ficha", key=f"abrir_{brinco}"):
+                            st.session_state.visualizar_brinco = brinco
+                            st.rerun()
+                        
+                        st.markdown("<div style='border-bottom: 1px solid #f0f2f6; margin: 4px 0;'></div>", unsafe_allow_html=True)
+                else:
+                    st.warning("Não há animais ativos no momento.")
+            
+            # ABA: ANIMAIS INATIVOS (BAIXAS)
+            with tab_inativos:
+                st.subheader("🪵 Histórico de Baixas e Animais Inativos")
+                if baixas:
+                    st.markdown("Lista de ovinos que deixaram o rebanho. Se necessário, use a opção de reativação para trazê-los de volta.")
+                    
+                    # Cabeçalho da tabela de inativos
+                    c_head_in = st.columns([1.2, 1.8, 1.5, 1.5, 1.5, 2.5])
+                    c_head_in[0].markdown("**Brinco**")
+                    c_head_in[1].markdown("**Raça**")
+                    c_head_in[2].markdown("**Sexo**")
+                    c_head_in[3].markdown("**Motivo Saída**")
+                    c_head_in[4].markdown("**Data Saída**")
+                    c_head_in[5].markdown("**Ações**")
+                    st.markdown("<hr style='margin: 8px 0;'>", unsafe_allow_html=True)
+                    
+                    # Dados de cada animal inativo
+                    for brinco, ficha_in in baixas.items():
+                        c_row_in = st.columns([1.2, 1.8, 1.5, 1.5, 1.5, 2.5])
+                        c_row_in[0].write(brinco)
+                        c_row_in[1].write(ficha_in["raca"])
+                        c_row_in[2].write(ficha_in["sexo"])
+                        c_row_in[3].write(ficha_in["status"])  # Guarda o tipo de baixa (Morte, Venda, Doação)
+                        c_row_in[4].write(ficha_in.get("data_saida", "Não informada"))
+                        
+                        # Ações combinadas: Ficha e Reativar lado a lado
+                        with c_row_in[5]:
+                            col_f, col_r = st.columns(2)
+                            if col_f.button("🔎 Ficha", key=f"abrir_in_{brinco}"):
+                                st.session_state.visualizar_brinco = brinco
+                                st.rerun()
+                            if col_r.button("🔄 Reativar", key=f"reativar_in_{brinco}"):
+                                dados_rebanho[brinco]["status"] = "Ativo"
+                                dados_rebanho[brinco]["data_saida"] = ""
+                                dados_rebanho[brinco]["motivo_saida"] = ""
+                                salvar_dados(dados_rebanho)
+                                st.success(f"Animal {brinco} reativado com sucesso!")
+                                st.rerun()
+                        
+                        st.markdown("<div style='border-bottom: 1px solid #f0f2f6; margin: 4px 0;'></div>", unsafe_allow_html=True)
+                else:
+                    st.info("Nenhuma baixa ou animal inativo registrado no sistema.")
 
 # ------------------------------------------------------------------------------------------
 # REGISTRAR ENTRADA (CADASTRO)
