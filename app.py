@@ -25,7 +25,7 @@ def salvar_dados(dados):
         json.dump(dados, f, indent=4, ensure_ascii=False)
 
 # Inicializar dados na sessão do Streamlit
-if "rebanho" Novelty not in st.session_state:
+if "rebanho" not in st.session_state:
     st.session_state.rebanho = carregar_dados()
 
 dados_rebanho = st.session_state.rebanho
@@ -175,7 +175,7 @@ elif menu == "Controle Sanitário/Médico":
                 else:
                     registro = {
                         "data": str(data_manejo),
-                        "categoria": categoria_manejo,
+                        "categoria": category_manejo if 'category_manejo' in locals() else categoria_manejo,
                         "descricao": descricao_tratamento,
                         "carencia": carencia
                     }
