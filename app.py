@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 import os
-from datetime import datetime
+from datetime import datetime, date
 import unicodedata
 
 # Configuração da página do Streamlit - Otimizado para visualização fluida
@@ -65,6 +65,39 @@ def obter_nome_exibicao(id_brinco, ficha_animal):
     if nome:
         return f"{id_brinco} - {nome}"
     return id_brinco
+
+# Função para verificar o status vacinal de um animal ativo
+def verificar_status_vacinal(ficha_animal):
+    historico = ficha_animal.get("historico_saude", [])
+    vacinas_pendentes = []
+    
+    hoje = date.today()
+    
+    for h in historico:
+        # Verifica se o evento tem uma próxima dose agendada
+        prox_dose_str = h.get("proxima_dose", "")
+        if prox_dose_str and prox_dose_str != "Não possui":
+            try:
+                data_prox = datetime.strptime(prox_dose_str, "%Y-%m-%d").date()
+                vacinas_pendentes.append((h.get("descricao", "Vacina"), data_prox))
+            except:
+                pass
+                
+    if not vacinas_pendentes:
+        return "", ""
+        
+    # Ordena para pegar a vacina com o prazo mais apertado ou mais vencido
+    vacinas_pendentes.sort(key=lambda x: x[1])
+    nome_vacina, data_alvo = vacinas_pendentes[0]
+    
+    dias_restantes = (data_alvo - hoje).days
+    
+    if dias_restantes < 0:
+        return "🔴 VENCIDA", f"Vacina {nome_vacina} vencida em {data_alvo.strftime('%d/%m/%Y')}"
+    elif dias_restantes <= 7:
+        return "🟡 CRÍTICA", f"Reforço de {nome_vacina} em {dias_restantes} dias ({data_alvo.strftime('%d/%m/%Y')})"
+    else:
+        return "🟢 EM DIA", f"Reforço de {nome_vacina} agendado para {data_alvo.strftime('%d/%m/%Y')}"
 
 # ------------------------------------------------------------------------------------------
 # CLASSES E GERADORES DE RELATÓRIO PDF
@@ -181,16 +214,23 @@ if FPDF_DISPONIVEL:
             pdf.cell(0, 6, remover_acentos('Nenhum registro de saude encontrado para este animal.'), 0, 1)
         else:
             pdf.set_font('Arial', 'B', 9)
-            pdf.cell(25, 7, remover_acentos('Data'), 1, 0, 'C')
-            pdf.cell(45, 7, remover_acentos('Tipo de Manejo'), 1, 0, 'C')
-            pdf.cell(85, 7, remover_acentos('Descricao / Medicamento'), 1, 0, 'C')
+            pdf.cell(20, 7, remover_acentos('Data'), 1, 0, 'C')
+            pdf.cell(35, 7, remover_acentos('Tipo'), 1, 0, 'C')
+            pdf.cell(65, 7, remover_acentos('Descricao'), 1, 0, 'C')
+            pdf.cell(35, 7, remover_acentos('Dose/Reforco'), 1, 0, 'C')
             pdf.cell(35, 7, remover_acentos('Carencia'), 1, 1, 'C')
             
             pdf.set_font('Arial', '', 9)
             for h in historico:
-                pdf.cell(25, 7, remover_acentos(h['data']), 1, 0, 'C')
-                pdf.cell(45, 7, remover_acentos(h['categoria']), 1, 0, 'C')
-                pdf.cell(85, 7, remover_acentos(h['descricao']), 1, 0, 'C')
+                pdf.cell(20, 7, remover_acentos(h['data']), 1, 0, 'C')
+                pdf.cell(35, 7, remover_acentos(h['categoria']), 1, 0, 'C')
+                pdf.cell(65, 7, remover_acentos(h['descricao']), 1, 0, 'C')
+                
+                detalhe_dose = h.get('dose_tipo', 'N/A')
+                if h.get('proxima_dose', '') and h['proxima_dose'] != 'Não possui':
+                    detalhe_dose += f" (Ref: {h['proxima_dose']})"
+                    
+                pdf.cell(35, 7, remover_acentos(detalhe_dose), 1, 0, 'C')
                 pdf.cell(35, 7, remover_acentos(h['carencia']), 1, 1, 'C')
         pdf.ln(5)
         
@@ -236,7 +276,6 @@ if FPDF_DISPONIVEL:
 # ------------------------------------------------------------------------------------------
 st.markdown("""
     <style>
-    /* Estilo padrão de altura de botões */
     .stButton > button {
         width: 100% !important;
         min-height: 44px !important;
@@ -244,8 +283,6 @@ st.markdown("""
         font-weight: 600 !important;
         margin-bottom: 5px !important;
     }
-    
-    /* 1. Botões Ativos/Principais (Menu Lateral e Formulários): Azul Royal da Logo (#1D2B99) */
     button[kind="primary"] {
         background-color: #1D2B99 !important;
         color: white !important;
@@ -255,8 +292,6 @@ st.markdown("""
         background-color: #121B66 !important;
         border: 1px solid #121B66 !important;
     }
-    
-    /* 2. Botões Secundários (Ficha, Voltar, Reativar): Verde Oliva Confortável (#2E7D32) */
     button[kind="secondary"] {
         background-color: #2E7D32 !important;
         color: white !important;
@@ -266,13 +301,10 @@ st.markdown("""
         background-color: #1B5E20 !important;
         border: 1px solid #1B5E20 !important;
     }
-    
-    /* Destaques das Métricas Numéricas: Amarelo Ouro/Laranja da Logo (#FFA500) */
     div[data-testid="stMetricNumber"] {
         color: #FFA500 !important;
         font-weight: bold !important;
     }
-    
     div[data-testid="column"] {
         padding: 5px !important;
         min-width: 150px !important;
@@ -322,7 +354,6 @@ def ir_para_saude():
     st.session_state.menu_atual = "Controle Sanitário/Médico"
     st.session_state.visualizar_brinco = None
 
-# Os botões do menu agora usam a lógica CSS que criamos (Primary = Azul / Secondary = Verde)
 if st.sidebar.button("📊 Painel Geral (Dashboard)", key="btn_menu_dash", type="primary" if st.session_state.menu_atual == "Painel Geral (Dashboard)" else "secondary"):
     ir_para_dashboard()
     st.rerun()
@@ -341,7 +372,7 @@ if st.sidebar.button("🏥 Controle Sanitário/Médico", key="btn_menu_saude", t
 
 st.sidebar.markdown("---")
 
-if not FPDF_DISPONINVEL:
+if not FPDF_DISPONIVEL:
     st.sidebar.warning("⚠️ **Geração de PDF Desativada**\n\nAdicione `fpdf` ao seu arquivo `requirements.txt` no GitHub.")
 
 menu = st.session_state.menu_atual
@@ -395,6 +426,11 @@ if menu == "Painel Geral (Dashboard)":
             st.markdown(f"**Mãe (Matriz):** {obter_nome_exibicao(ficha['mae'], mae_f) if ficha['mae'] != 'Não Informado' else 'Não Informado'}")
             st.markdown(f"**Situação Atual:** :green[{ficha['status']}]" if ficha['status'] == "Ativo" else f":red[Baixa ({ficha['status']})]")
             
+            # Alerta de vacinação individual na ficha
+            status_v, desc_v = verificar_status_vacinal(ficha)
+            if status_v:
+                st.markdown(f"**Status Vacinal:** {desc_v}")
+            
             if ficha['status'] != "Ativo":
                 st.warning(f"⚠️ **Este animal está inativo no rebanho.**\n\n"
                            f"**Motivo da Saída:** {ficha['status']}\n\n"
@@ -430,8 +466,20 @@ if menu == "Painel Geral (Dashboard)":
                 st.info("Nenhum registro de saúde encontrado para este animal.")
             else:
                 df_saude = pd.DataFrame(historico)
-                df_saude.columns = ["Data", "Tipo de Evento", "Descrição / Medicamento", "Período de Carência"]
-                st.table(df_saude)
+                # Formatar colunas para exibição amigável
+                exibir_lista = []
+                for h in historico:
+                    det_dose = h.get('dose_tipo', 'N/A')
+                    if h.get('proxima_dose', '') and h['proxima_dose'] != "Não possui":
+                        det_dose += f" (Reforço em: {datetime.strptime(h['proxima_dose'], '%Y-%m-%d').strftime('%d/%m/%Y')})"
+                    exibir_lista.append({
+                        "Data": datetime.strptime(h['data'], "%Y-%m-%d").strftime("%d/%m/%Y"),
+                        "Tipo de Evento": h['categoria'],
+                        "Descrição / Medicamento": h['descricao'],
+                        "Dose": det_dose,
+                        "Carência": h['carencia']
+                    })
+                st.table(pd.DataFrame(exibir_lista))
                 
         with aba_crias:
             st.subheader("Genealogia - Filhos Cadastrados")
@@ -492,21 +540,31 @@ if menu == "Painel Geral (Dashboard)":
                 
                 st.markdown("---")
                 if ativos:
-                    c_head = st.columns([2, 2, 2, 2.5, 1.5])
+                    # Incluímos a coluna de Status de Vacina no cabeçalho
+                    c_head = st.columns([2, 1.5, 1.5, 2, 1.5, 1.5])
                     c_head[0].markdown("**Identificação / Nome**")
                     c_head[1].markdown("**Raça**")
                     c_head[2].markdown("**Sexo**")
                     c_head[3].markdown("**Idade**")
-                    c_head[4].markdown("**Ações**")
+                    c_head[4].markdown("**Vacinação**")
+                    c_head[5].markdown("**Ações**")
                     st.markdown("<hr style='margin: 8px 0;'>", unsafe_allow_html=True)
                     
                     for brinco, f_at in ativos.items():
-                        c_row = st.columns([2, 2, 2, 2.5, 1.5])
+                        c_row = st.columns([2, 1.5, 1.5, 2, 1.5, 1.5])
                         c_row[0].write(obter_nome_exibicao(brinco, f_at))
                         c_row[1].write(f_at["raca"])
                         c_row[2].write(f_at["sexo"])
                         c_row[3].write(calcular_idade(f_at["data_nascimento"]))
-                        if c_row[4].button("🔎 Ficha", key=f"abrir_{brinco}"):
+                        
+                        # Processar sinalização de vacina na linha
+                        status_v, desc_v = verificar_status_vacinal(f_at)
+                        if status_v:
+                            c_row[4].write(status_v, help=desc_v)
+                        else:
+                            c_row[4].write("Sem pendências")
+                            
+                        if c_row[5].button("🔎 Ficha", key=f"abrir_{brinco}"):
                             st.session_state.visualizar_brinco = brinco
                             st.rerun()
                         st.markdown("<div style='border-bottom: 1px solid #f0f2f6; margin: 4px 0;'></div>", unsafe_allow_html=True)
@@ -665,7 +723,21 @@ elif menu == "Controle Sanitário/Médico":
         with st.form("form_saude", clear_on_submit=True):
             data_manejo = st.date_input("Data do Manejo", datetime.today())
             categoria_manejo = st.selectbox("Tipo de Evento", ["Vacinação Preventiva", "Vermifugação", "Tratamento de Doença (ex: Casco/Mastite)", "Avaliação Famacha", "Outro"])
-            descricao_tratamento = st.text_input("Descrição")
+            descricao_tratamento = st.text_input("Descrição (ex: Vacina Clostridiose, Aplicação de Ivomec)")
+            
+            # Nova Lógica: Seleção de Dose caso seja Vacinação Preventiva
+            dose_tipo = "N/A"
+            proxima_dose_data = "Não possui"
+            
+            if categoria_manejo == "Vacinação Preventiva":
+                st.markdown("#### 💉 Detalhes da Dose")
+                dose_tipo = st.selectbox("Esquema de Dose:", ["Dose Única", "1ª Dose", "2ª Dose"])
+                
+                # Se necessitar de mais doses, abre o campo de calendário para agendar o reforço
+                if dose_tipo in ["1ª Dose", "2ª Dose"]:
+                    proxima_dose_data = st.date_input("Data do Próximo Reforço / Próxima Dose", datetime.today())
+                    proxima_dose_data = str(proxima_dose_data)
+            
             carencia = st.text_input("Período de Carência", value="Não possui")
             
             if tipo_manejo.startswith("Individual"):
@@ -687,6 +759,8 @@ elif menu == "Controle Sanitário/Médico":
                         "data": str(data_manejo),
                         "categoria": categoria_manejo,
                         "descricao": os_descricao,
+                        "dose_tipo": dose_tipo,
+                        "proxima_dose": proxima_dose_data,
                         "carencia": carencia
                     }
                     for brinco in animais_alvo:
@@ -706,5 +780,5 @@ elif menu == "Controle Sanitário/Médico":
                 st.info("Nenhum registro de saúde encontrado para este animal.")
             else:
                 df_saude = pd.DataFrame(historico)
-                df_saude.columns = ["Data", "Tipo de Evento", "Descrição / Medicamento", "Período de Carência"]
+                df_saude.columns = ["Data", "Tipo de Evento", "Descrição / Medicamento", "Dose", "Próxima Dose", "Período de Carência"]
                 st.table(df_saude)
