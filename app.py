@@ -6,9 +6,10 @@ from datetime import datetime
 import unicodedata
 
 # Configuração da página do Streamlit - Otimizado para visualização fluida
-st.set_page_config(page_title="Gestão de Ovinocultura MVP", page_icon="🐑", layout="wide")
+st.set_page_config(page_title="Recanto Estrela da Manhã - Gestão", page_icon="🐑", layout="wide")
 
 ARQUIVO_DADOS = "rebanho.json"
+ARQUIVO_LOGO = "logo.png"
 
 # Tentativa de importação do FPDF para geração de relatórios
 FPDF_DISPONIVEL = True
@@ -73,7 +74,7 @@ if FPDF_DISPONIVEL:
     class PDFRelatorio(FPDF):
         def header(self):
             self.set_font('Arial', 'B', 12)
-            self.cell(0, 10, remover_acentos('SISTEMA DE GESTAO DE REBANHO OVINOTECNICO'), 0, 1, 'C')
+            self.cell(0, 10, remover_acentos('RECANTO ESTRELA DA MANHA - GESTAO DE REBANHO'), 0, 1, 'C')
             self.set_font('Arial', 'I', 8)
             self.cell(0, 5, remover_acentos(f'Relatorio emitido em: {datetime.today().strftime("%d/%m/%Y %H:%M")}'), 0, 1, 'C')
             self.line(10, 26, 200, 26)
@@ -231,14 +232,11 @@ if FPDF_DISPONIVEL:
         return pdf.output(dest='S').encode('latin1')
 
 # ------------------------------------------------------------------------------------------
-# INJEÇÃO DE CSS DE ADAPTABILIDADE MOBILE E ESTILIZAÇÃO DO MENU (COR PERSONALIZADA)
+# INJEÇÃO DE CSS - IDENTIDADE VISUAL PERSONALIZADA (AZUL E AMARELO-OURO DA LOGO)
 # ------------------------------------------------------------------------------------------
-
-# Nota: O código hexadecimal #2E7D32 representa um verde folha escuro. 
-# Se quiser mudar para laranja no futuro, mude de #2E7D32 para #EF6C00 nas linhas abaixo.
 st.markdown("""
     <style>
-    /* Configuração geral dos botões normais */
+    /* Estilo geral de botões */
     .stButton > button {
         width: 100% !important;
         min-height: 44px !important;
@@ -247,17 +245,21 @@ st.markdown("""
         margin-bottom: 5px !important;
     }
     
-    /* Força os botões do tipo 'primary' (ativos no menu) a ficarem VERDES */
+    /* Botão Ativo do Menu Lateral: Azul Royal da Logo (#1D2B99) */
     div[data-testid="stSidebar"] button[kind="primary"] {
-        background-color: #2E7D32 !important;
+        background-color: #1D2B99 !important;
         color: white !important;
-        border: 1px solid #2E7D32 !important;
+        border: 1px solid #1D2B99 !important;
+    }
+    div[data-testid="stSidebar"] button[kind="primary"]:hover {
+        background-color: #121B66 !important;
+        border: 1px solid #121B66 !important;
     }
     
-    /* Efeito de passar o dedo/mouse por cima do botão ativo */
-    div[data-testid="stSidebar"] button[kind="primary"]:hover {
-        background-color: #1B5E20 !important;
-        border: 1px solid #1B5E20 !important;
+    /* Destaques de métricas numéricas: Amarelo Ouro/Laranja da Logo (#FFA500) */
+    div[data-testid="stMetricNumber"] {
+        color: #FFA500 !important;
+        font-weight: bold !important;
     }
     
     div[data-testid="column"] {
@@ -282,12 +284,17 @@ if "menu_atual" not in st.session_state:
 
 dados_rebanho = st.session_state.rebanho
 
-st.title("🐑 Sistema de Gerenciamento de Rebanho Ovino")
-st.markdown("---")
+# ------------------------------------------------------------------------------------------
+# BARRA LATERAL: LOGO E TÍTULO DA PROPRIEDADE
+# ------------------------------------------------------------------------------------------
+# Exibe a logo se ela existir na raiz do repositório
+if os.path.exists(ARQUIVO_LOGO):
+    st.sidebar.image(ARQUIVO_LOGO, use_container_width=True)
 
-# ------------------------------------------------------------------------------------------
-# MENU LATERAL COM BOTÕES CUSTOMIZADOS
-# ------------------------------------------------------------------------------------------
+st.sidebar.markdown("<h2 style='text-align: center; color: #1D2B99; margin-top: 0;'>RECANTO ESTRELA DA MANHÃ</h2>", unsafe_allow_html=True)
+st.sidebar.markdown("---")
+
+# Menu de Navegação por botões
 st.sidebar.markdown("### 📋 Menu de Navegação")
 
 def ir_para_dashboard():
@@ -306,7 +313,6 @@ def ir_para_saude():
     st.session_state.menu_atual = "Controle Sanitário/Médico"
     st.session_state.visualizar_brinco = None
 
-# Os botões ativos agora usam o estilo primário (que controlamos via CSS para ficar VERDE)
 if st.sidebar.button("📊 Painel Geral (Dashboard)", key="btn_menu_dash", type="primary" if st.session_state.menu_atual == "Painel Geral (Dashboard)" else "secondary"):
     ir_para_dashboard()
     st.rerun()
@@ -329,6 +335,11 @@ if not FPDF_DISPONIVEL:
     st.sidebar.warning("⚠️ **Geração de PDF Desativada**\n\nAdicione `fpdf` ao seu arquivo `requirements.txt` no GitHub.")
 
 menu = st.session_state.menu_atual
+
+# Título Principal do Topo
+st.markdown("<h1 style='text-align: center; color: #1D2B99;'>🏡 RECANTO ESTRELA DA MANHÃ</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-style: italic;'>Gerenciamento Avançado de Ovinocultura</p>", unsafe_allow_html=True)
+st.markdown("---")
 
 # ------------------------------------------------------------------------------------------
 # PAINEL GERAL (DASHBOARD)
@@ -432,8 +443,6 @@ if menu == "Painel Geral (Dashboard)":
                 st.dataframe(df_filhos, use_container_width=True, hide_index=True)
                 
     else:
-        st.header("📊 Painel Geral do Rebanho")
-        
         if not dados_rebanho:
             st.info("Nenhum animal cadastrado no momento.")
         else:
