@@ -9,6 +9,26 @@ st.set_page_config(page_title="Gestão de Ovinocultura MVP", page_icon="🐑", l
 
 ARQUIVO_DADOS = "rebanho.json"
 
+# Função para calcular a idade de forma amigável
+def calcular_idade(data_nasc_str):
+    try:
+        nasc = datetime.strptime(data_nasc_str, "%Y-%m-%d")
+        hoje = datetime.today()
+        diferenca = hoje - nasc
+        dias = diferenca.days
+        if dias < 30:
+            return f"{dias} dias"
+        meses = dias // 30
+        if meses < 12:
+            return f"{meses} meses"
+        anos = meses // 12
+        meses_restantes = meses % 12
+        if meses_restantes == 0:
+            return f"{anos} ano(s)"
+        return f"{anos} ano(s) e {meses_restantes} mês(es)"
+    except:
+        return "Não informada"
+
 # Função para carregar os dados salvos
 def carregar_dados():
     if os.path.exists(ARQUIVO_DADOS):
@@ -28,6 +48,10 @@ def salvar_dados(dados):
 if "rebanho" not in st.session_state:
     st.session_state.rebanho = carregar_dados()
 
+# Inicializar estado para controle de visualização de ficha individual
+if "visualizar_brinco" not in st.session_state:
+    st.session_state.visualizar_brinco = None
+
 dados_rebanho = st.session_state.rebanho
 
 # Título Principal
@@ -40,34 +64,131 @@ menu = st.sidebar.selectbox(
     ["Painel Geral (Dashboard)", "Registrar Entrada (Cadastro)", "Registrar Saída (Baixa)", "Controle Sanitário/Médico"]
 )
 
+# Se o usuário mudar de aba, limpamos a visualização de ficha individual para não travar a tela
+if menu != "Painel Geral (Dashboard)":
+    st.session_state.visualizar_brinco = None
+
 # ------------------------------------------------------------------------------------------
 # PAINEL GERAL (DASHBOARD)
 # ------------------------------------------------------------------------------------------
 if menu == "Painel Geral (Dashboard)":
-    st.header("📊 Painel Geral do Rebanho")
     
-    if not dados_rebanho:
-        st.info("Nenhum animal cadastrado no momento. Vá em 'Registrar Entrada' para começar.")
+    # Caso um animal tenha sido selecionado para ver a Ficha
+    if st.session_state.visualizar_brinco:
+        id_sel = st.session_state.visualizar_brinco
+        ficha = dados_rebanho[id_sel]
+        
+        st.button("⬅️ Voltar para a Lista de Animais", on_click=lambda: st.session_state.update({"visualizar_brinco": None}))
+        
+        st.header(f"🗂️ Ficha do Animal: Brinco {id_sel}")
+        
+        # Estrutura em colunas: Info Geral na Esquerda, Campo de Notas na Direita
+        col_esquerda, col_direita = st.columns(2)
+        
+        with col_esquerda:
+            st.subheader("📋 Informações Cadastrais")
+            st.markdown(f"**Raça:** {ficha['raca']}")
+            st.markdown(f"**Sexo:** {ficha['sexo']}")
+            st.markdown(f"**Data de Nascimento:** {ficha['data_nascimento']} *({calcular_idade(ficha['data_nascimento'])})*")
+            st.markdown(f"**Forma de Entrada:** {ficha['origem']}")
+            st.markdown(f"**Pai (Reprodutor):** {ficha['pai']}")
+            st.markdown(f"**Mãe (Matriz):** {ficha['mae']}")
+            st.markdown(f"**Situação Atual:** :green[{ficha['status']}]" if ficha['status'] == "Ativo" else f":red[Baixa ({ficha['status']})]")
+        
+        with col_direita:
+            st.subheader("📝 Observações e Anotações Gerais")
+            # Carrega observações existentes ou inicia em branco
+            obs_atual = ficha.get("observacoes", "")
+            nova_obs = st.text_area("Insira aqui anotações importantes (comportamento, partos, etc.)", value=obs_atual, height=150)
+            
+            if st.button("💾 Salvar Anotações"):
+                dados_rebanho[id_sel]["observacoes"] = nova_obs
+                salvar_dados(dados_rebanho)
+                st.success("Anotações salvas com sucesso!")
+                st.rerun()
+                
+        st.markdown("---")
+        
+        # Abas de histórico dentro da própria ficha
+        aba_saude, aba_crias = st.tabs(["🏥 Histórico de Saúde", "🧬 Crias (Descendentes)"])
+        
+        with aba_saude:
+            st.subheader("Histórico Médico e Sanitário")
+            historico = ficha.get("historico_saude", [])
+            if not historico:
+                st.info("Nenhum registro de saúde encontrado para este animal.")
+            else:
+                df_saude = pd.DataFrame(historico)
+                df_saude.columns = ["Data", "Tipo de Evento", "Descrição / Medicamento", "Período de Carência"]
+                st.table(df_saude)
+                
+        with aba_crias:
+            st.subheader("Genealogia - Filhos Cadastrados")
+            # Buscar todos os animais onde este animal é Pai ou Mãe
+            filhos = []
+            for b_id, b_info in dados_rebanho.items():
+                if b_info.get("pai") == id_sel or b_info.get("mae") == id_sel:
+                    filhos.append({
+                        "Brinco": b_id,
+                        "Raça": b_info["raca"],
+                        "Sexo": b_info["sexo"],
+                        "Idade": calcular_idade(b_info["data_nascimento"]),
+                        "Status": b_info["status"]
+                    })
+            
+            if not filhos:
+                st.info("Nenhum descendente direto cadastrado no sistema para este animal.")
+            else:
+                df_filhos = pd.DataFrame(filhos)
+                st.dataframe(df_filhos, use_container_width=True, hide_index=True)
+                
     else:
-        # Filtrar ativos
-        ativos = {k: v for k, v in dados_rebanho.items() if v["status"] == "Ativo"}
-        baixas = {k: v for k, v in dados_rebanho.items() if v["status"] != "Ativo"}
+        st.header("📊 Painel Geral do Rebanho")
         
-        # Métricas rápidas
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total de Animais Ativos", len(ativos))
-        col2.metric("Total de Baixas (Vendas/Mortes)", len(baixas))
-        col3.metric("Total Histórico Registrado", len(dados_rebanho))
-        
-        st.subheader("📋 Lista de Animais Ativos no Rebanho")
-        if ativos:
-            df = pd.DataFrame.from_dict(ativos, orient="index")
-            # Reorganizar colunas para exibição bonita
-            df.index.name = "ID / Brinco"
-            colunas_exibicao = ["raca", "sexo", "data_nascimento", "origem", "pai", "mae"]
-            st.dataframe(df[colunas_exibicao], use_container_width=True)
+        if not dados_rebanho:
+            st.info("Nenhum animal cadastrado no momento. Vá em 'Registrar Entrada' para começar.")
         else:
-            st.warning("Não há animais ativos no momento.")
+            # Filtrar ativos
+            ativos = {k: v for k, v in dados_rebanho.items() if v["status"] == "Ativo"}
+            baixas = {k: v for k, v in dados_rebanho.items() if v["status"] != "Ativo"}
+            
+            # Métricas rápidas
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Total de Animais Ativos", len(ativos))
+            col2.metric("Total de Baixas (Vendas/Mortes)", len(baixas))
+            col3.metric("Total Histórico Registrado", len(dados_rebanho))
+            
+            st.subheader("📋 Lista de Animais Ativos no Rebanho")
+            if ativos:
+                # Criando tabela interativa com botões de clique
+                st.markdown("Clique em **🔎 Abrir Ficha** para ver as informações detalhadas, histórico de saúde, crias e observações do ovino.")
+                
+                # Exibição organizada em linhas com colunas do Streamlit
+                # Cabeçalho da tabela
+                c_head = st.columns([1.5, 2, 2, 2, 2])
+                c_head[0].markdown("**Brinco**")
+                c_head[1].markdown("**Raça**")
+                c_head[2].markdown("**Sexo**")
+                c_head[3].markdown("**Idade**")
+                c_head[4].markdown("**Ações**")
+                st.markdown("<hr style='margin: 8px 0;'>", unsafe_allow_html=True)
+                
+                # Dados de cada animal
+                for brinco, ficha in ativos.items():
+                    c_row = st.columns([1.5, 2, 2, 2, 2])
+                    c_row[0].write(brinco)
+                    c_row[1].write(ficha["raca"])
+                    c_row[2].write(ficha["sexo"])
+                    c_row[3].write(calcular_idade(ficha["data_nascimento"]))
+                    
+                    # Botão para abrir a ficha do animal
+                    if c_row[4].button("🔎 Abrir Ficha", key=f"abrir_{brinco}"):
+                        st.session_state.visualizar_brinco = brinco
+                        st.rerun()
+                    
+                    st.markdown("<div style='border-bottom: 1px solid #f0f2f6; margin: 4px 0;'></div>", unsafe_allow_html=True)
+            else:
+                st.warning("Não há animais ativos no momento.")
 
 # ------------------------------------------------------------------------------------------
 # REGISTRAR ENTRADA (CADASTRO)
@@ -107,6 +228,7 @@ elif menu == "Registrar Entrada (Cadastro)":
                     "status": "Ativo",
                     "motivo_saida": "",
                     "data_saida": "",
+                    "observacoes": "",
                     "historico_saude": []
                 }
                 salvar_dados(dados_rebanho)
@@ -175,7 +297,7 @@ elif menu == "Controle Sanitário/Médico":
                 else:
                     registro = {
                         "data": str(data_manejo),
-                        "categoria": category_manejo if 'category_manejo' in locals() else categoria_manejo,
+                        "categoria": categoria_manejo,
                         "descricao": descricao_tratamento,
                         "carencia": carencia
                     }
