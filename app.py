@@ -232,11 +232,11 @@ if FPDF_DISPONIVEL:
         return pdf.output(dest='S').encode('latin1')
 
 # ------------------------------------------------------------------------------------------
-# INJEÇÃO DE CSS - IDENTIDADE VISUAL PERSONALIZADA (AZUL E AMARELO-OURO DA LOGO)
+# INJEÇÃO DE CSS - DEFINIÇÃO COMPLETA DAS CORES DO RECANTO (AZUL DA LOGO E VERDE DESTAQUE)
 # ------------------------------------------------------------------------------------------
 st.markdown("""
     <style>
-    /* Estilo geral de botões */
+    /* Estilo padrão de altura de botões */
     .stButton > button {
         width: 100% !important;
         min-height: 44px !important;
@@ -245,18 +245,29 @@ st.markdown("""
         margin-bottom: 5px !important;
     }
     
-    /* Botão Ativo do Menu Lateral: Azul Royal da Logo (#1D2B99) */
-    div[data-testid="stSidebar"] button[kind="primary"] {
+    /* 1. Botões Ativos/Principais (Menu Lateral e Formulários): Azul Royal da Logo (#1D2B99) */
+    button[kind="primary"] {
         background-color: #1D2B99 !important;
         color: white !important;
         border: 1px solid #1D2B99 !important;
     }
-    div[data-testid="stSidebar"] button[kind="primary"]:hover {
+    button[kind="primary"]:hover {
         background-color: #121B66 !important;
         border: 1px solid #121B66 !important;
     }
     
-    /* Destaques de métricas numéricas: Amarelo Ouro/Laranja da Logo (#FFA500) */
+    /* 2. Botões Secundários (Ficha, Voltar, Reativar): Verde Oliva Confortável (#2E7D32) */
+    button[kind="secondary"] {
+        background-color: #2E7D32 !important;
+        color: white !important;
+        border: 1px solid #2E7D32 !important;
+    }
+    button[kind="secondary"]:hover {
+        background-color: #1B5E20 !important;
+        border: 1px solid #1B5E20 !important;
+    }
+    
+    /* Destaques das Métricas Numéricas: Amarelo Ouro/Laranja da Logo (#FFA500) */
     div[data-testid="stMetricNumber"] {
         color: #FFA500 !important;
         font-weight: bold !important;
@@ -287,14 +298,12 @@ dados_rebanho = st.session_state.rebanho
 # ------------------------------------------------------------------------------------------
 # BARRA LATERAL: LOGO E TÍTULO DA PROPRIEDADE
 # ------------------------------------------------------------------------------------------
-# Exibe a logo se ela existir na raiz do repositório
 if os.path.exists(ARQUIVO_LOGO):
     st.sidebar.image(ARQUIVO_LOGO, use_container_width=True)
 
 st.sidebar.markdown("<h2 style='text-align: center; color: #1D2B99; margin-top: 0;'>RECANTO ESTRELA DA MANHÃ</h2>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
-# Menu de Navegação por botões
 st.sidebar.markdown("### 📋 Menu de Navegação")
 
 def ir_para_dashboard():
@@ -313,6 +322,7 @@ def ir_para_saude():
     st.session_state.menu_atual = "Controle Sanitário/Médico"
     st.session_state.visualizar_brinco = None
 
+# Os botões do menu agora usam a lógica CSS que criamos (Primary = Azul / Secondary = Verde)
 if st.sidebar.button("📊 Painel Geral (Dashboard)", key="btn_menu_dash", type="primary" if st.session_state.menu_atual == "Painel Geral (Dashboard)" else "secondary"):
     ir_para_dashboard()
     st.rerun()
@@ -331,7 +341,7 @@ if st.sidebar.button("🏥 Controle Sanitário/Médico", key="btn_menu_saude", t
 
 st.sidebar.markdown("---")
 
-if not FPDF_DISPONIVEL:
+if not FPDF_DISPONINVEL:
     st.sidebar.warning("⚠️ **Geração de PDF Desativada**\n\nAdicione `fpdf` ao seu arquivo `requirements.txt` no GitHub.")
 
 menu = st.session_state.menu_atual
