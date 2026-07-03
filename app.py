@@ -3,11 +3,33 @@ import pandas as pd
 import json
 import os
 from datetime import datetime
+import unicodedata
 
-# Configuração da página do Streamlit
+# Configuração da página do Streamlit - Otimizado para visualização fluida
 st.set_page_config(page_title="Gestão de Ovinocultura MVP", page_icon="🐑", layout="wide")
 
 ARQUIVO_DADOS = "rebanho.json"
+
+# Tentativa de importação do FPDF para geração de relatórios
+FPDF_DISPONIVEL = True
+try:
+    from fpdf import FPDF
+except ImportError:
+    FPDF_DISPONIVEL = False
+
+# ------------------------------------------------------------------------------------------
+# FUNÇÕES UTILITÁRIAS E HIGIENIZAÇÃO PARA PDF
+# ------------------------------------------------------------------------------------------
+
+def remover_acentos(texto):
+    """
+    Remove acentos e caracteres especiais para evitar erros de renderização 
+    em PDFs que utilizam fontes padrão do sistema (como Helvetica ou Arial).
+    """
+    if not isinstance(texto, str):
+        return str(texto)
+    nfkd_form = unicodedata.normalize('NFKD', texto)
+    return "".join([c for c in nfkd_form if not unicodedata.combining(c)])
 
 # Função para calcular a idade de forma amigável
 def calcular_idade(data_nasc_str):
@@ -25,7 +47,7 @@ def calcular_idade(data_nasc_str):
         meses_restantes = meses % 12
         if meses_restantes == 0:
             return f"{anos} ano(s)"
-        return f"{anos} ano(s) e {meses_restantes} mês(es)"
+        return f"{anos} ano(s) e {meses_restantes} mes(es)"
     except:
         return "Não informada"
 
@@ -44,45 +66,273 @@ def salvar_dados(dados):
     with open(ARQUIVO_DADOS, "w", encoding="utf-8") as f:
         json.dump(dados, f, indent=4, ensure_ascii=False)
 
-# Inicializar dados na sessão do Streamlit
+# ------------------------------------------------------------------------------------------
+# CLASSES E GERADORES DE RELATÓRIO PDF
+# ------------------------------------------------------------------------------------------
+
+if FPDF_DISPONIVEL:
+    class PDFRelatorio(FPDF):
+        def header(self):
+            # Cabeçalho padrão de páginas
+            self.set_font('Arial', 'B', 12)
+            self.cell(0, 10, remover_acentos('SISTEMA DE GESTAO DE REBANHO OVINOTECNICO'), 0, 1, 'C')
+            self.set_font('Arial', 'I', 8)
+            self.cell(0, 5, remover_acentos(f'Relatorio emitido em: {datetime.today().strftime("%d/%m/%Y %H:%M")}'), 0, 1, 'C')
+            self.line(10, 26, 200, 26)
+            self.ln(6)
+
+        def footer(self):
+            # Rodapé padrão de páginas
+            self.set_y(-15)
+            self.set_font('Arial', 'I', 8)
+            self.cell(0, 10, remover_acentos(f'Pagina {self.page_no()}'), 0, 0, 'C')
+
+    def gerar_pdf_ativos(ativos):
+        pdf = PDFRelatorio()
+        pdf.add_page()
+        pdf.set_font('Arial', 'B', 14)
+        pdf.cell(0, 10, remover_acentos('RELATORIO DE ANIMAIS ATIVOS NO REBANHO'), 0, 1, 'L')
+        pdf.ln(4)
+        
+        # Cabeçalho da Tabela (Totalizando 190mm de largura útil A4)
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(30, 8, remover_acentos('Brinco/ID'), 1, 0, 'C')
+        pdf.cell(45, 8, remover_acentos('Raca'), 1, 0, 'C')
+        pdf.cell(35, 8, remover_acentos('Sexo'), 1, 0, 'C')
+        pdf.cell(45, 8, remover_acentos('Idade'), 1, 0, 'C')
+        pdf.cell(35, 8, remover_acentos('Origem'), 1, 1, 'C')
+        
+        # Dados dos animais
+        pdf.set_font('Arial', '', 9)
+        for brinco, f in ativos.items():
+            pdf.cell(30, 8, remover_acentos(brinco), 1, 0, 'C')
+            pdf.cell(45, 8, remover_acentos(f['raca']), 1, 0, 'C')
+            pdf.cell(35, 8, remover_acentos(f['sexo']), 1, 0, 'C')
+            pdf.cell(45, 8, remover_acentos(calcular_idade(f['data_nascimento'])), 1, 0, 'C')
+            pdf.cell(35, 8, remover_acentos(f['origem']), 1, 1, 'C')
+            
+        return pdf.output(dest='S').encode('latin1')
+
+    def gerar_pdf_inativos(baixas):
+        pdf = PDFRelatorio()
+        pdf.add_page()
+        pdf.set_font('Arial', 'B', 14)
+        pdf.cell(0, 10, remover_acentos('RELATORIO DE BAIXAS E INATIVOS'), 0, 1, 'L')
+        pdf.ln(4)
+        
+        # Cabeçalho da Tabela
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(30, 8, remover_acentos('Brinco/ID'), 1, 0, 'C')
+        pdf.cell(40, 8, remover_acentos('Raca'), 1, 0, 'C')
+        pdf.cell(30, 8, remover_acentos('Sexo'), 1, 0, 'C')
+        pdf.cell(45, 8, remover_acentos('Motivo da Saida'), 1, 0, 'C')
+        pdf.cell(45, 8, remover_acentos('Data da Saida'), 1, 1, 'C')
+        
+        # Dados dos animais
+        pdf.set_font('Arial', '', 9)
+        for brinco, f in baixas.items():
+            pdf.cell(30, 8, remover_acentos(brinco), 1, 0, 'C')
+            pdf.cell(40, 8, remover_acentos(f['raca']), 1, 0, 'C')
+            pdf.cell(30, 8, remover_acentos(f['sexo']), 1, 0, 'C')
+            pdf.cell(45, 8, remover_acentos(f['status']), 1, 0, 'C')
+            pdf.cell(45, 8, remover_acentos(f.get('data_saida', 'N/I')), 1, 1, 'C')
+            
+        return pdf.output(dest='S').encode('latin1')
+
+    def gerar_pdf_ficha_individual(brinco, ficha, todos_dados):
+        pdf = PDFRelatorio()
+        pdf.add_page()
+        
+        pdf.set_font('Arial', 'B', 14)
+        pdf.cell(0, 10, remover_acentos(f'FICHA INDIVIDUAL - ANIMAL BRINCO {brinco}'), 0, 1, 'L')
+        pdf.ln(3)
+        
+        # Bloco de Informações Cadastrais
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 8, remover_acentos('1. Informacoes Cadastrais'), 'B', 1, 'L')
+        pdf.ln(2)
+        
+        pdf.set_font('Arial', '', 10)
+        pdf.cell(95, 6, remover_acentos(f'Raca: {ficha["raca"]}'), 0, 0)
+        pdf.cell(95, 6, remover_acentos(f'Sexo: {ficha["sexo"]}'), 0, 1)
+        pdf.cell(95, 6, remover_acentos(f'Nascimento: {ficha["data_nascimento"]}'), 0, 0)
+        pdf.cell(95, 6, remover_acentos(f'Idade: {calcular_idade(ficha["data_nascimento"])}'), 0, 1)
+        pdf.cell(95, 6, remover_acentos(f'Origem: {ficha["origem"]}'), 0, 0)
+        pdf.cell(95, 6, remover_acentos(f'Situacao Atual: {ficha["status"]}'), 0, 1)
+        pdf.cell(95, 6, remover_acentos(f'Pai: {ficha["pai"]}'), 0, 0)
+        pdf.cell(95, 6, remover_acentos(f'Mae: {ficha["mae"]}'), 0, 1)
+        pdf.ln(5)
+        
+        # Observações Gerais
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 8, remover_acentos('2. Observacoes e Notas de Campo'), 'B', 1, 'L')
+        pdf.ln(2)
+        pdf.set_font('Arial', '', 10)
+        obs = ficha.get("observacoes", "")
+        if not obs:
+            obs = "Nenhuma observacao registrada para este animal."
+        pdf.multi_cell(0, 5, remover_acentos(obs))
+        pdf.ln(5)
+        
+        # Histórico Sanitário / Médico
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 8, remover_acentos('3. Historico Sanitario e Tratamentos Medicos'), 'B', 1, 'L')
+        pdf.ln(2)
+        
+        historico = ficha.get("historico_saude", [])
+        if not historico:
+            pdf.set_font('Arial', 'I', 10)
+            pdf.cell(0, 6, remover_acentos('Nenhum registro de saude encontrado para este animal.'), 0, 1)
+        else:
+            pdf.set_font('Arial', 'B', 9)
+            pdf.cell(25, 7, remover_acentos('Data'), 1, 0, 'C')
+            pdf.cell(45, 7, remover_acentos('Tipo de Manejo'), 1, 0, 'C')
+            pdf.cell(85, 7, remover_acentos('Descricao / Medicamento'), 1, 0, 'C')
+            pdf.cell(35, 7, remover_acentos('Carencia'), 1, 1, 'C')
+            
+            pdf.set_font('Arial', '', 9)
+            for h in historico:
+                pdf.cell(25, 7, remover_acentos(h['data']), 1, 0, 'C')
+                pdf.cell(45, 7, remover_acentos(h['categoria']), 1, 0, 'C')
+                pdf.cell(85, 7, remover_acentos(h['descricao']), 1, 0, 'C')
+                pdf.cell(35, 7, remover_acentos(h['carencia']), 1, 1, 'C')
+        pdf.ln(5)
+        
+        # Genealogia (Crias)
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 8, remover_acentos('4. Crias Registradas (Descendentes)'), 'B', 1, 'L')
+        pdf.ln(2)
+        
+        filhos = []
+        for b_id, b_info in todos_dados.items():
+            if b_info.get("pai") == brinco or b_info.get("mae") == brinco:
+                filhos.append({
+                    "Brinco": b_id,
+                    "Raca": b_info["raca"],
+                    "Sexo": b_info["sexo"],
+                    "Idade": calcular_idade(b_info["data_nascimento"]),
+                    "Status": b_info["status"]
+                })
+                
+        if not filhos:
+            pdf.set_font('Arial', 'I', 10)
+            pdf.cell(0, 6, remover_acentos('Nenhuma cria direta registrada no sistema para este animal.'), 0, 1)
+        else:
+            pdf.set_font('Arial', 'B', 9)
+            pdf.cell(30, 7, remover_acentos('Brinco/ID'), 1, 0, 'C')
+            pdf.cell(40, 7, remover_acentos('Raca'), 1, 0, 'C')
+            pdf.cell(40, 7, remover_acentos('Sexo'), 1, 0, 'C')
+            pdf.cell(45, 7, remover_acentos('Idade'), 1, 0, 'C')
+            pdf.cell(35, 7, remover_acentos('Status'), 1, 1, 'C')
+            
+            pdf.set_font('Arial', '', 9)
+            for f in filhos:
+                pdf.cell(30, 7, remover_acentos(f['Brinco']), 1, 0, 'C')
+                pdf.cell(40, 7, remover_acentos(f['Raca']), 1, 0, 'C')
+                pdf.cell(40, 7, remover_acentos(f['Sexo']), 1, 0, 'C')
+                pdf.cell(45, 7, remover_acentos(f['Idade']), 1, 0, 'C')
+                pdf.cell(35, 7, remover_acentos(f['Status']), 1, 1, 'C')
+                
+        return pdf.output(dest='S').encode('latin1')
+
+# ------------------------------------------------------------------------------------------
+# INJEÇÃO DE CSS DE ADAPTABILIDADE MOBILE E LAYOUT RESPONSIVO
+# ------------------------------------------------------------------------------------------
+
+st.markdown("""
+    <style>
+    /* Otimização de áreas de botões para facilitar cliques com dedos em touchscreens */
+    .stButton > button {
+        width: 100% !important;
+        min-height: 44px !important; /* Tamanho de toque padrão mobile */
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        margin-bottom: 5px !important;
+    }
+    
+    /* Configuração de contêineres e margens para evitar scroll horizontal em aparelhos móveis */
+    div[data-testid="column"] {
+        padding: 5px !important;
+        min-width: 150px !important;
+    }
+    
+    /* Estilo amigável de cards informativos para facilitar leitura rápida no celular */
+    .card-rebanho {
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 10px;
+        border: 1px solid #e9ecef;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# ------------------------------------------------------------------------------------------
+# INICIALIZAÇÃO DE SESSÃO
+# ------------------------------------------------------------------------------------------
+
 if "rebanho" not in st.session_state:
     st.session_state.rebanho = carregar_dados()
 
-# Inicializar estado para controle de visualização de ficha individual
 if "visualizar_brinco" not in st.session_state:
     st.session_state.visualizar_brinco = None
 
 dados_rebanho = st.session_state.rebanho
 
-# Título Principal
+# Título do Aplicativo
 st.title("🐑 Sistema de Gerenciamento de Rebanho Ovino")
 st.markdown("---")
 
-# Menu Lateral para Navegação
+# Menu de navegação lateral clássico
 menu = st.sidebar.selectbox(
     "Navegação",
     ["Painel Geral (Dashboard)", "Registrar Entrada (Cadastro)", "Registrar Saída (Baixa)", "Controle Sanitário/Médico"]
 )
 
-# Se o usuário mudar de aba, limpamos a visualização de ficha individual para não travar a tela
+# Caso o usuário troque de módulo no menu lateral, removemos o foco da ficha individual
 if menu != "Painel Geral (Dashboard)":
     st.session_state.visualizar_brinco = None
+
+# Alerta sobre a ativação dos PDFs na barra lateral, se necessário
+if not FPDF_DISPONIVEL:
+    st.sidebar.warning("⚠️ **Geração de PDF Desativada**\n\nAdicione `fpdf` ao seu arquivo `requirements.txt` no GitHub para habilitar a geração de relatórios em PDF.")
 
 # ------------------------------------------------------------------------------------------
 # PAINEL GERAL (DASHBOARD)
 # ------------------------------------------------------------------------------------------
 if menu == "Painel Geral (Dashboard)":
     
-    # Caso um animal tenha sido selecionado para ver a Ficha
+    # ------------------------------------------------------------------------------------------
+    # VISUALIZAÇÃO DE FICHA DETALHADA INDIVIDUAL (SELECIONADO)
+    # ------------------------------------------------------------------------------------------
     if st.session_state.visualizar_brinco:
         id_sel = st.session_state.visualizar_brinco
         ficha = dados_rebanho[id_sel]
         
+        # Botão de retorno superior (Grande e fácil de tocar no celular)
         st.button("⬅️ Voltar para a Lista de Animais", on_click=lambda: st.session_state.update({"visualizar_brinco": None}))
         
         st.header(f"🗂️ Ficha do Animal: Brinco {id_sel}")
         
-        # Estrutura em colunas: Info Geral na Esquerda, Campo de Notas na Direita
+        # Seção de botões de Ações Rápidas da Ficha (Retornar e Baixar PDF)
+        col_pdf_f, col_ret_f = st.columns([1, 1])
+        with col_pdf_f:
+            if FPDF_DISPONIVEL:
+                try:
+                    pdf_bytes_ficha = gerar_pdf_ficha_individual(id_sel, ficha, dados_rebanho)
+                    st.download_button(
+                        label="📥 Baixar Ficha em PDF",
+                        data=pdf_bytes_ficha,
+                        file_name=f"ficha_individual_{id_sel}.pdf",
+                        mime="application/pdf",
+                        key=f"download_ficha_{id_sel}"
+                    )
+                except Exception as e:
+                    st.error(f"Erro ao compilar PDF: {e}")
+            else:
+                st.info("💡 Habilite o suporte a PDF no arquivo requirements.txt")
+        
+        # Colunas principais da Ficha (Adapta para empilhar em celulares)
         col_esquerda, col_direita = st.columns(2)
         
         with col_esquerda:
@@ -95,26 +345,25 @@ if menu == "Painel Geral (Dashboard)":
             st.markdown(f"**Mãe (Matriz):** {ficha['mae']}")
             st.markdown(f"**Situação Atual:** :green[{ficha['status']}]" if ficha['status'] == "Ativo" else f":red[Baixa ({ficha['status']})]")
             
-            # Se for um animal baixado (inativo), exibir os detalhes da saída e a opção de reativar
+            # Alerta informativo de baixas
             if ficha['status'] != "Ativo":
-                st.warning(f"⚠️ **Este animal está inativo (fora do rebanho).**\n\n"
+                st.warning(f"⚠️ **Este animal está inativo no rebanho.**\n\n"
                            f"**Motivo da Saída:** {ficha['status']}\n\n"
                            f"**Data da Saída:** {ficha.get('data_saida', 'Não informada')}\n\n"
-                           f"**Detalhes/Observações da Saída:** {ficha.get('motivo_saida', 'Não informado')}")
+                           f"**Detalhes da Saída:** {ficha.get('motivo_saida', 'Não informado')}")
                 
                 if st.button("🔄 Reativar este Animal (Retornar ao Rebanho)", key=f"reativar_ficha_{id_sel}"):
                     dados_rebanho[id_sel]["status"] = "Ativo"
                     dados_rebanho[id_sel]["data_saida"] = ""
                     dados_rebanho[id_sel]["motivo_saida"] = ""
                     salvar_dados(dados_rebanho)
-                    st.success(f"O animal {id_sel} foi reativado e agora consta como Ativo no rebanho!")
+                    st.success(f"O animal {id_sel} foi reativado com sucesso!")
                     st.rerun()
         
         with col_direita:
             st.subheader("📝 Observações e Anotações Gerais")
-            # Carrega observações existentes ou inicia em branco
             obs_atual = ficha.get("observacoes", "")
-            nova_obs = st.text_area("Insira aqui anotações importantes (comportamento, partos, etc.)", value=obs_atual, height=150)
+            nova_obs = st.text_area("Insira aqui anotações importantes (temperamento, facilidade de parto, etc.)", value=obs_atual, height=150)
             
             if st.button("💾 Salvar Anotações"):
                 dados_rebanho[id_sel]["observacoes"] = nova_obs
@@ -124,7 +373,7 @@ if menu == "Painel Geral (Dashboard)":
                 
         st.markdown("---")
         
-        # Abas de histórico dentro da própria ficha
+        # Abas inferiores internas da Ficha
         aba_saude, aba_crias = st.tabs(["🏥 Histórico de Saúde", "🧬 Crias (Descendentes)"])
         
         with aba_saude:
@@ -139,7 +388,6 @@ if menu == "Painel Geral (Dashboard)":
                 
         with aba_crias:
             st.subheader("Genealogia - Filhos Cadastrados")
-            # Buscar todos os animais onde este animal é Pai ou Mãe
             filhos = []
             for b_id, b_info in dados_rebanho.items():
                 if b_info.get("pai") == id_sel or b_info.get("mae") == id_sel:
@@ -152,38 +400,71 @@ if menu == "Painel Geral (Dashboard)":
                     })
             
             if not filhos:
-                st.info("Nenhum descendente direto cadastrado no sistema para este animal.")
+                st.info("Nenhum descendente direto cadastrado para este animal.")
             else:
                 df_filhos = pd.DataFrame(filhos)
                 st.dataframe(df_filhos, use_container_width=True, hide_index=True)
                 
+    # ------------------------------------------------------------------------------------------
+    # LISTAGEM GERAL DE ANIMAIS (ATIVOS / INATIVOS)
+    # ------------------------------------------------------------------------------------------
     else:
         st.header("📊 Painel Geral do Rebanho")
         
         if not dados_rebanho:
             st.info("Nenhum animal cadastrado no momento. Vá em 'Registrar Entrada' para começar.")
         else:
-            # Filtrar ativos e inativos (baixas)
+            # Filtros básicos de dados
             ativos = {k: v for k, v in dados_rebanho.items() if v["status"] == "Ativo"}
             baixas = {k: v for k, v in dados_rebanho.items() if v["status"] != "Ativo"}
             
-            # Métricas rápidas
+            # Painel numérico simplificado (métrica amigável para telas de celular)
             col1, col2, col3 = st.columns(3)
-            col1.metric("Total de Animais Ativos", len(ativos))
-            col2.metric("Total de Baixas (Vendas/Mortes)", len(baixas))
-            col3.metric("Total Histórico Registrado", len(dados_rebanho))
+            col1.metric("Animais Ativos", len(ativos))
+            col2.metric("Baixas Registradas", len(baixas))
+            col3.metric("Cadastro Histórico", len(dados_rebanho))
             
-            # Divisão por abas no Dashboard
+            # Divisão primária em Abas principais de visualização
             tab_ativos, tab_inativos = st.tabs(["🟢 Animais Ativos", "🔴 Animais Inativos (Baixas)"])
             
+            # --------------------------------------------------------------------------------------
             # ABA: ANIMAIS ATIVOS
+            # --------------------------------------------------------------------------------------
             with tab_ativos:
                 st.subheader("📋 Lista de Animais Ativos no Rebanho")
+                
+                # Barra de busca rápida móvel para acessar a ficha de forma instantânea
+                col_busca, col_pdf_ativos = st.columns([2, 1])
+                with col_busca:
+                    busca_id = st.selectbox(
+                        "🔍 Busca Rápida de Animal Ativo (Brinco):",
+                        ["Selecione..."] + list(ativos.keys()),
+                        key="busca_ativo_mobile"
+                    )
+                    if busca_id != "Selecione...":
+                        st.session_state.visualizar_brinco = busca_id
+                        st.rerun()
+                
+                # Botão de download do relatório de ativos
+                with col_pdf_ativos:
+                    if FPDF_DISPONIVEL and ativos:
+                        try:
+                            pdf_ativos_bytes = gerar_pdf_ativos(ativos)
+                            st.download_button(
+                                label="📥 Baixar Relatório (PDF)",
+                                data=pdf_ativos_bytes,
+                                file_name=f"animais_ativos_{datetime.today().strftime('%Y%m%d')}.pdf",
+                                mime="application/pdf",
+                                key="btn_pdf_ativos"
+                            )
+                        except Exception as e:
+                            st.error(f"Erro de PDF: {e}")
+                
+                st.markdown("---")
+                
                 if ativos:
-                    st.markdown("Clique em **🔎 Abrir Ficha** para ver as informações detalhadas, histórico de saúde, crias e observações do ovino.")
-                    
-                    # Cabeçalho da tabela de ativos
-                    c_head = st.columns([1.5, 2, 2, 2, 2])
+                    # Cabeçalhos da tabela simplificada (adaptados para evitar colunas excessivas no celular)
+                    c_head = st.columns([1.5, 2, 2, 2.5, 2])
                     c_head[0].markdown("**Brinco**")
                     c_head[1].markdown("**Raça**")
                     c_head[2].markdown("**Sexo**")
@@ -191,16 +472,15 @@ if menu == "Painel Geral (Dashboard)":
                     c_head[4].markdown("**Ações**")
                     st.markdown("<hr style='margin: 8px 0;'>", unsafe_allow_html=True)
                     
-                    # Dados de cada animal ativo
+                    # Linhas da tabela com espaçamento generoso para toque em celular
                     for brinco, ficha_at in ativos.items():
-                        c_row = st.columns([1.5, 2, 2, 2, 2])
+                        c_row = st.columns([1.5, 2, 2, 2.5, 2])
                         c_row[0].write(brinco)
                         c_row[1].write(ficha_at["raca"])
                         c_row[2].write(ficha_at["sexo"])
                         c_row[3].write(calcular_idade(ficha_at["data_nascimento"]))
                         
-                        # Botão para abrir a ficha do animal
-                        if c_row[4].button("🔎 Abrir Ficha", key=f"abrir_{brinco}"):
+                        if c_row[4].button("🔎 Ficha", key=f"abrir_{brinco}"):
                             st.session_state.visualizar_brinco = brinco
                             st.rerun()
                         
@@ -208,48 +488,76 @@ if menu == "Painel Geral (Dashboard)":
                 else:
                     st.warning("Não há animais ativos no momento.")
             
+            # --------------------------------------------------------------------------------------
             # ABA: ANIMAIS INATIVOS (BAIXAS)
+            # --------------------------------------------------------------------------------------
             with tab_inativos:
-                st.subheader("🪵 Histórico de Baixas e Animais Inativos")
+                st.subheader("🪵 Histórico de Baixas")
+                
+                # Barra de busca rápida de inativos
+                col_busca_in, col_pdf_inativos = st.columns([2, 1])
+                with col_busca_in:
+                    busca_id_in = st.selectbox(
+                        "🔍 Busca Rápida de Inativo (Brinco):",
+                        ["Selecione..."] + list(baixas.keys()),
+                        key="busca_inativo_mobile"
+                    )
+                    if busca_id_in != "Selecione...":
+                        st.session_state.visualizar_brinco = busca_id_in
+                        st.rerun()
+                
+                # Botão de download de inativos em PDF
+                with col_pdf_inativos:
+                    if FPDF_DISPONIVEL and baixas:
+                        try:
+                            pdf_inativos_bytes = gerar_pdf_inativos(baixas)
+                            st.download_button(
+                                label="📥 Baixar Relatório (PDF)",
+                                data=pdf_inativos_bytes,
+                                file_name=f"animais_inativos_{datetime.today().strftime('%Y%m%d')}.pdf",
+                                mime="application/pdf",
+                                key="btn_pdf_inativos"
+                            )
+                        except Exception as e:
+                            st.error(f"Erro de PDF: {e}")
+                
+                st.markdown("---")
+                
                 if baixas:
-                    st.markdown("Lista de ovinos que deixaram o rebanho. Se necessário, use a opção de reativação para trazê-los de volta.")
-                    
-                    # Cabeçalho da tabela de inativos
-                    c_head_in = st.columns([1.2, 1.8, 1.5, 1.5, 1.5, 2.5])
+                    c_head_in = st.columns([1.5, 2, 2, 2.5, 2])
                     c_head_in[0].markdown("**Brinco**")
                     c_head_in[1].markdown("**Raça**")
                     c_head_in[2].markdown("**Sexo**")
-                    c_head_in[3].markdown("**Motivo Saída**")
-                    c_head_in[4].markdown("**Data Saída**")
-                    c_head_in[5].markdown("**Ações**")
+                    c_head_in[3].markdown("**Motivo/Data**")
+                    c_head_in[4].markdown("**Ações**")
                     st.markdown("<hr style='margin: 8px 0;'>", unsafe_allow_html=True)
                     
-                    # Dados de cada animal inativo
                     for brinco, ficha_in in baixas.items():
-                        c_row_in = st.columns([1.2, 1.8, 1.5, 1.5, 1.5, 2.5])
+                        c_row_in = st.columns([1.5, 2, 2, 2.5, 2])
                         c_row_in[0].write(brinco)
                         c_row_in[1].write(ficha_in["raca"])
                         c_row_in[2].write(ficha_in["sexo"])
-                        c_row_in[3].write(ficha_in["status"])  # Guarda o tipo de baixa (Morte, Venda, Doação)
-                        c_row_in[4].write(ficha_in.get("data_saida", "Não informada"))
                         
-                        # Ações combinadas: Ficha e Reativar lado a lado
-                        with c_row_in[5]:
-                            col_f, col_r = st.columns(2)
-                            if col_f.button("🔎 Ficha", key=f"abrir_in_{brinco}"):
+                        # Combinação do motivo e data para otimizar espaço lateral em telas pequenas
+                        motivo_data = f"{ficha_in['status']} ({ficha_in.get('data_saida', 'N/I')})"
+                        c_row_in[3].write(motivo_data)
+                        
+                        # Botões empilhados verticalmente em celulares
+                        with c_row_in[4]:
+                            if st.button("🔎 Ficha", key=f"abrir_in_{brinco}"):
                                 st.session_state.visualizar_brinco = brinco
                                 st.rerun()
-                            if col_r.button("🔄 Reativar", key=f"reativar_in_{brinco}"):
+                            if st.button("🔄 Reativar", key=f"reativar_in_{brinco}"):
                                 dados_rebanho[brinco]["status"] = "Ativo"
                                 dados_rebanho[brinco]["data_saida"] = ""
                                 dados_rebanho[brinco]["motivo_saida"] = ""
                                 salvar_dados(dados_rebanho)
-                                st.success(f"Animal {brinco} reativado com sucesso!")
+                                st.success(f"O animal {brinco} foi reativado com sucesso!")
                                 st.rerun()
                         
                         st.markdown("<div style='border-bottom: 1px solid #f0f2f6; margin: 4px 0;'></div>", unsafe_allow_html=True)
                 else:
-                    st.info("Nenhuma baixa ou animal inativo registrado no sistema.")
+                    st.info("Nenhuma baixa cadastrada.")
 
 # ------------------------------------------------------------------------------------------
 # REGISTRAR ENTRADA (CADASTRO)
@@ -265,7 +573,6 @@ elif menu == "Registrar Entrada (Cadastro)":
         origem = st.selectbox("Forma de Entrada", ["Procriação (Nascimento)", "Compra", "Doação"])
         
         st.markdown("### 🧬 Controle Parental (Genealogia)")
-        # Lista animais já existentes para serem pais
         lista_animais = ["Não Informado"] + list(dados_rebanho.keys())
         pai = st.selectbox("Pai (Reprodutor)", lista_animais)
         mae = st.selectbox("Mãe (Matriz)", lista_animais)
@@ -278,7 +585,6 @@ elif menu == "Registrar Entrada (Cadastro)":
             elif id_brinco in dados_rebanho:
                 st.error(f"Já existe um animal cadastrado com o Brinco {id_brinco}.")
             else:
-                # Criar a ficha do animal
                 dados_rebanho[id_brinco] = {
                     "raca": raca,
                     "sexo": sexo,
@@ -332,7 +638,6 @@ elif menu == "Controle Sanitário/Médico":
     if not dados_rebanho:
         st.info("Cadastre animais primeiro para poder registrar manejos de saúde.")
     else:
-        # Escolha do manejo: Individual ou Coletivo
         tipo_manejo = st.radio("Tipo de Manejo", ["Individual (Tratamento Médico / Famacha)", "Coletivo (Vacinação / Vermifugação de todo o lote)"], horizontal=True)
         
         with st.form("form_saude", clear_on_submit=True):
@@ -341,17 +646,15 @@ elif menu == "Controle Sanitário/Médico":
             descricao_tratamento = st.text_input("Descrição (ex: Vacina Clostridiose, Aplicação de Ivomec, Tratamento com Antibiótico)")
             carencia = st.text_input("Período de Carência (Tempo sem abater/consumir leite)", value="Não possui")
             
-            # Se for individual, seleciona o animal
             if tipo_manejo.startswith("Individual"):
                 animais_alvo = [st.selectbox("Selecione o Animal (Brinco)", list(dados_rebanho.keys()))]
             else:
-                # Se for coletivo, aplica a todos os ativos
                 animais_alvo = [k for k, v in dados_rebanho.items() if v["status"] == "Ativo"]
             
             enviar_saude = st.form_submit_button("Gravar Registro de Saúde")
             
             if enviar_saude:
-                if not descricao_tratamento.strip():
+                if not os_descricao := descricao_tratamento.strip():
                     st.error("Por favor, descreva o tratamento ou vacina aplicado.")
                 elif not animais_alvo:
                     st.error("Nenhum animal selecionado ou ativo para receber o manejo.")
@@ -359,7 +662,7 @@ elif menu == "Controle Sanitário/Médico":
                     registro = {
                         "data": str(data_manejo),
                         "categoria": categoria_manejo,
-                        "descricao": descricao_tratamento,
+                        "descricao": os_descricao,
                         "carencia": carencia
                     }
                     
@@ -370,7 +673,6 @@ elif menu == "Controle Sanitário/Médico":
                     st.success(f"Registro de saúde adicionado com sucesso para {len(animais_alvo)} animal(ais)!")
                     st.rerun()
                     
-        # Seção para consultar o histórico de um animal específico
         st.markdown("---")
         st.subheader("🔍 Consultar Histórico de Saúde Individual")
         animal_consulta = st.selectbox("Selecione um animal para ver a ficha médica", [""] + list(dados_rebanho.keys()))
