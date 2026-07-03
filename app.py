@@ -66,12 +66,18 @@ def obter_nome_exibicao(id_brinco, ficha_animal):
         return f"{id_brinco} - {nome}"
     return id_brinco
 
-# Função para verificar o status vacinal de um animal ativo
+# Função para verificar o status vacinal e de tratamentos contínuos de um animal ativo
 def verificar_status_vacinal(ficha_animal):
     historico = ficha_animal.get("historico_saude", [])
     vacinas_pendentes = []
     hoje = date.today()
     
+    # 1. Verifica primeiro se há algum tratamento ativo marcado como Uso Contínuo
+    for h in historico:
+        if h.get("dose_tipo", "") == "Uso Contínuo":
+            return "🩺 CONTÍNUO", f"Animal em tratamento contínuo: {h.get('descricao', 'Sem descrição')}"
+            
+    # 2. Se não for contínuo, avalia o calendário de vacinas pendentes
     for h in historico:
         prox_dose_str = h.get("proxima_dose", "")
         if prox_dose_str and prox_dose_str != "Não possui":
@@ -114,7 +120,6 @@ def verificar_status_carencia(ficha_animal):
     if not carencias_ativas:
         return "✅ LIBERADO", "Animal livre de períodos de carência médica."
 
-    # Pega a carência mais longa (última a vencer)
     carencias_ativas.sort(key=lambda x: x[1], reverse=True)
     nome_med, data_liberacao = carencias_ativas[0]
     return "⚠️ BLOQUEADO", f"Sob efeito de {nome_med}. Liberado apenas em {data_liberacao.strftime('%d/%m/%Y')}"
@@ -459,10 +464,10 @@ if menu == "Painel Geral (Dashboard)":
             st.markdown(f"**Mãe (Matriz):** {obter_nome_exibicao(ficha['mae'], mae_f) if ficha['mae'] != 'Não Informado' else 'Não Informado'}")
             st.markdown(f"**Situação Atual:** :green[{ficha['status']}]" if ficha['status'] == "Ativo" else f":red[Baixa ({ficha['status']})]")
             
-            # Status vacinal na ficha
+            # Status vacinal / sanitário na ficha
             status_v, desc_v = verificar_status_vacinal(ficha)
             if status_v:
-                st.markdown(f"**Status Vacinal:** {desc_v}")
+                st.markdown(f"**Manejo Sanitário:** {desc_v}")
                 
             # Status de carência médica na ficha
             status_c, desc_c = verificar_status_carencia(ficha)
@@ -583,13 +588,12 @@ if menu == "Painel Geral (Dashboard)":
                 
                 st.markdown("---")
                 if ativos:
-                    # Correção aplicada aqui: Usando st.markdown com legenda nativa para evitar falhas do Streamlit util
                     c_head = st.columns([1.8, 1.2, 1.2, 1.6, 1.2, 1.5, 1.5])
                     c_head[0].markdown("**Identificação / Nome**")
                     c_head[1].markdown("**Raça**")
                     c_head[2].markdown("**Sexo**")
                     c_head[3].markdown("**Idade**")
-                    c_head[4].markdown("**Vacinação**")
+                    c_head[4].markdown("**Manejo/Vacina**")
                     c_head[5].markdown("**Carência Abate**")
                     c_head[6].markdown("**Ações**")
                     st.markdown("<hr style='margin: 8px 0;'>", unsafe_allow_html=True)
@@ -601,14 +605,14 @@ if menu == "Painel Geral (Dashboard)":
                         c_row[2].write(f_at["sexo"])
                         c_row[3].write(calcular_idade(f_at["data_nascimento"]))
                         
-                        # Processar sinalização de vacina com Markdown limpo
+                        # Processar sinalização de vacina ou tratamento contínuo
                         status_v, desc_v = verificar_status_vacinal(f_at)
                         if status_v:
                             c_row[4].markdown(f"{status_v}", help=desc_v)
                         else:
                             c_row[4].write("Em dia")
                             
-                        # Processar sinalização de carência médica com Markdown limpo (Evita o TypeError anterior)
+                        # Processar sinalização de carência médica
                         status_c, desc_c = verificar_status_carencia(f_at)
                         c_row[5].markdown(f"{status_c}", help=desc_c)
                             
@@ -716,7 +720,7 @@ elif menu == "Registrar Entrada (Cadastro)":
                     "raca": raca,
                     "sexo": sexo,
                     "data_nascimento": str(data_nascimento),
-                    "origem": origin,
+                    "origem": origem,
                     "pai": pai,
                     "mae": mae,
                     "status": "Ativo",
@@ -771,17 +775,24 @@ elif menu == "Controle Sanitário/Médico":
         with st.form("form_saude", clear_on_submit=True):
             data_manejo = st.date_input("Data do Manejo", datetime.today())
             categoria_manejo = st.selectbox("Tipo de Evento", ["Vacinação Preventiva", "Vermifugação", "Tratamento de Doença (ex: Casco/Mastite)", "Avaliação Famacha", "Outro"])
-            descricao_tratamento = st.text_input("Descrição (ex: Vacina Clostridiose, Antibiótico Borgal, Vermífugo)")
+            descricao_tratamento = st.text_input("Descrição (ex: Vacina Clostridiose, Antibiótico Borgal, Tratamento de Casco)")
             
             dose_tipo = "N/A"
             proxima_dose_data = "Não possui"
             
+            # Condicional para detalhes de aplicação
             if categoria_manejo == "Vacinação Preventiva":
                 st.markdown("#### 💉 Detalhes da Dose")
                 dose_tipo = st.selectbox("Esquema de Dose:", ["Dose Única", "1ª Dose", "2ª Dose"])
                 if dose_tipo in ["1ª Dose", "2ª Dose"]:
                     proxima_dose_data = st.date_input("Data do Próximo Reforço", datetime.today())
                     proxima_dose_data = str(proxima_dose_data)
+            
+            elif categoria_manejo in ["Tratamento de Doença (ex: Casco/Mastite)", "Outro"]:
+                st.markdown("#### 🩺 Tipo de Tratamento")
+                tipo_tratamento_opcao = st.radio("Duração do Manejo Médico:", ["Ciclo Fechado (Dose/Dias Contados)", "Uso Contínuo"], horizontal=True)
+                if tipo_tratamento_opcao == "Uso Contínuo":
+                    dose_tipo = "Uso Contínuo"
             
             # Seleção da data final de carência via calendário
             st.markdown("#### ⏳ Período de Carência (Abate/Leite)")
