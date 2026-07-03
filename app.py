@@ -70,11 +70,9 @@ def obter_nome_exibicao(id_brinco, ficha_animal):
 def verificar_status_vacinal(ficha_animal):
     historico = ficha_animal.get("historico_saude", [])
     vacinas_pendentes = []
-    
     hoje = date.today()
     
     for h in historico:
-        # Verifica se o evento tem uma próxima dose agendada
         prox_dose_str = h.get("proxima_dose", "")
         if prox_dose_str and prox_dose_str != "Não possui":
             try:
@@ -86,10 +84,8 @@ def verificar_status_vacinal(ficha_animal):
     if not vacinas_pendentes:
         return "", ""
         
-    # Ordena para pegar a vacina com o prazo mais apertado ou mais vencido
     vacinas_pendentes.sort(key=lambda x: x[1])
     nome_vacina, data_alvo = vacinas_pendentes[0]
-    
     dias_restantes = (data_alvo - hoje).days
     
     if dias_restantes < 0:
@@ -98,6 +94,30 @@ def verificar_status_vacinal(ficha_animal):
         return "🟡 CRÍTICA", f"Reforço de {nome_vacina} em {dias_restantes} dias ({data_alvo.strftime('%d/%m/%Y')})"
     else:
         return "🟢 EM DIA", f"Reforço de {nome_vacina} agendado para {data_alvo.strftime('%d/%m/%Y')}"
+
+# Função para verificar o status de carência médica de um animal ativo
+def verificar_status_carencia(ficha_animal):
+    historico = ficha_animal.get("historico_saude", [])
+    hoje = date.today()
+    carencias_ativas = []
+
+    for h in historico:
+        data_car_str = h.get("carencia", "")
+        if data_car_str and data_car_str != "Não possui":
+            try:
+                data_car = datetime.strptime(data_car_str, "%Y-%m-%d").date()
+                if data_car >= hoje:
+                    carencias_ativas.append((h.get("descricao", "Medicamento"), data_car))
+            except:
+                pass
+
+    if not carencias_ativas:
+        return "✅ LIBERADO", "Animal livre de períodos de carência médica."
+
+    # Pega a carência mais longa (última a vencer)
+    carencias_ativas.sort(key=lambda x: x[1], reverse=True)
+    nome_med, data_liberacao = carencias_ativas[0]
+    return "⚠️ BLOQUEADO", f"Sob efeito de {nome_med}. Liberado apenas em {data_liberacao.strftime('%d/%m/%Y')}"
 
 # ------------------------------------------------------------------------------------------
 # CLASSES E GERADORES DE RELATÓRIO PDF
@@ -231,7 +251,14 @@ if FPDF_DISPONIVEL:
                     detalhe_dose += f" (Ref: {h['proxima_dose']})"
                     
                 pdf.cell(35, 7, remover_acentos(detalhe_dose), 1, 0, 'C')
-                pdf.cell(35, 7, remover_acentos(h['carencia']), 1, 1, 'C')
+                
+                car_pdf = h.get('carencia', 'Não possui')
+                if car_pdf != 'Não possui':
+                    try:
+                        car_pdf = datetime.strptime(car_pdf, "%Y-%m-%d").strftime("%d/%m/%Y")
+                    except:
+                        pass
+                pdf.cell(35, 7, remover_acentos(car_pdf), 1, 1, 'C')
         pdf.ln(5)
         
         pdf.set_font('Arial', 'B', 11)
@@ -272,7 +299,7 @@ if FPDF_DISPONIVEL:
         return pdf.output(dest='S').encode('latin1')
 
 # ------------------------------------------------------------------------------------------
-# INJEÇÃO DE CSS - DEFINIÇÃO COMPLETA DAS CORES DO RECANTO (AZUL DA LOGO E VERDE DESTAQUE)
+# INJEÇÃO DE CSS - DEFINIÇÃO DAS CORES DA LOGO (AZUL E AMARLO ALARANJADO)
 # ------------------------------------------------------------------------------------------
 st.markdown("""
     <style>
@@ -283,6 +310,8 @@ st.markdown("""
         font-weight: 600 !important;
         margin-bottom: 5px !important;
     }
+    
+    /* 1. Botões Ativos/Menu Principal: Azul Royal (#1D2B99) */
     button[kind="primary"] {
         background-color: #1D2B99 !important;
         color: white !important;
@@ -292,15 +321,19 @@ st.markdown("""
         background-color: #121B66 !important;
         border: 1px solid #121B66 !important;
     }
+    
+    /* 2. Botões Secundários/Ações de Campo: Amarelo Alaranjado/Ouro (#FFA500) */
     button[kind="secondary"] {
-        background-color: #2E7D32 !important;
+        background-color: #FFA500 !important;
         color: white !important;
-        border: 1px solid #2E7D32 !important;
+        border: 1px solid #FFA500 !important;
     }
     button[kind="secondary"]:hover {
-        background-color: #1B5E20 !important;
-        border: 1px solid #1B5E20 !important;
+        background-color: #E69500 !important;
+        border: 1px solid #E69500 !important;
     }
+    
+    /* Destaques das Métricas Numéricas Principais: Amarelo Ouro */
     div[data-testid="stMetricNumber"] {
         color: #FFA500 !important;
         font-weight: bold !important;
@@ -426,10 +459,14 @@ if menu == "Painel Geral (Dashboard)":
             st.markdown(f"**Mãe (Matriz):** {obter_nome_exibicao(ficha['mae'], mae_f) if ficha['mae'] != 'Não Informado' else 'Não Informado'}")
             st.markdown(f"**Situação Atual:** :green[{ficha['status']}]" if ficha['status'] == "Ativo" else f":red[Baixa ({ficha['status']})]")
             
-            # Alerta de vacinação individual na ficha
+            # Status vacinal na ficha
             status_v, desc_v = verificar_status_vacinal(ficha)
             if status_v:
                 st.markdown(f"**Status Vacinal:** {desc_v}")
+                
+            # Status de carência médica na ficha
+            status_c, desc_c = verificar_status_carencia(ficha)
+            st.markdown(f"**Carência Alimentar/Abate:** {desc_c}")
             
             if ficha['status'] != "Ativo":
                 st.warning(f"⚠️ **Este animal está inativo no rebanho.**\n\n"
@@ -465,19 +502,25 @@ if menu == "Painel Geral (Dashboard)":
             if not historico:
                 st.info("Nenhum registro de saúde encontrado para este animal.")
             else:
-                df_saude = pd.DataFrame(historico)
-                # Formatar colunas para exibição amigável
                 exibir_lista = []
                 for h in historico:
                     det_dose = h.get('dose_tipo', 'N/A')
                     if h.get('proxima_dose', '') and h['proxima_dose'] != "Não possui":
                         det_dose += f" (Reforço em: {datetime.strptime(h['proxima_dose'], '%Y-%m-%d').strftime('%d/%m/%Y')})"
+                    
+                    car_formatada = h.get('carencia', 'Não possui')
+                    if car_formatada != "Não possui":
+                        try:
+                            car_formatada = "Até " + datetime.strptime(car_formatada, "%Y-%m-%d").strftime("%d/%m/%Y")
+                        except:
+                            pass
+                            
                     exibir_lista.append({
                         "Data": datetime.strptime(h['data'], "%Y-%m-%d").strftime("%d/%m/%Y"),
                         "Tipo de Evento": h['categoria'],
                         "Descrição / Medicamento": h['descricao'],
                         "Dose": det_dose,
-                        "Carência": h['carencia']
+                        "Fim da Carência": car_formatada
                     })
                 st.table(pd.DataFrame(exibir_lista))
                 
@@ -540,31 +583,36 @@ if menu == "Painel Geral (Dashboard)":
                 
                 st.markdown("---")
                 if ativos:
-                    # Incluímos a coluna de Status de Vacina no cabeçalho
-                    c_head = st.columns([2, 1.5, 1.5, 2, 1.5, 1.5])
+                    # Tabela expandida com colunas para Vacina e Carência
+                    c_head = st.columns([1.8, 1.2, 1.2, 1.6, 1.2, 1.5, 1.5])
                     c_head[0].markdown("**Identificação / Nome**")
                     c_head[1].markdown("**Raça**")
                     c_head[2].markdown("**Sexo**")
                     c_head[3].markdown("**Idade**")
                     c_head[4].markdown("**Vacinação**")
-                    c_head[5].markdown("**Ações**")
+                    c_head[5].markdown("**Carência Abate**")
+                    c_head[6].markdown("**Ações**")
                     st.markdown("<hr style='margin: 8px 0;'>", unsafe_allow_html=True)
                     
                     for brinco, f_at in ativos.items():
-                        c_row = st.columns([2, 1.5, 1.5, 2, 1.5, 1.5])
+                        c_row = st.columns([1.8, 1.2, 1.2, 1.6, 1.2, 1.5, 1.5])
                         c_row[0].write(obter_nome_exibicao(brinco, f_at))
                         c_row[1].write(f_at["raca"])
                         c_row[2].write(f_at["sexo"])
                         c_row[3].write(calcular_idade(f_at["data_nascimento"]))
                         
-                        # Processar sinalização de vacina na linha
+                        # Processar sinalização de vacina
                         status_v, desc_v = verificar_status_vacinal(f_at)
                         if status_v:
                             c_row[4].write(status_v, help=desc_v)
                         else:
-                            c_row[4].write("Sem pendências")
+                            c_row[4].write("Em dia")
                             
-                        if c_row[5].button("🔎 Ficha", key=f"abrir_{brinco}"):
+                        # Processar sinalização de carência médica
+                        status_c, desc_c = verificar_status_carencia(f_at)
+                        c_row[5].write(status_c, help=desc_c)
+                            
+                        if c_row[6].button("🔎 Ficha", key=f"abrir_{brinco}"):
                             st.session_state.visualizar_brinco = brinco
                             st.rerun()
                         st.markdown("<div style='border-bottom: 1px solid #f0f2f6; margin: 4px 0;'></div>", unsafe_allow_html=True)
@@ -723,22 +771,27 @@ elif menu == "Controle Sanitário/Médico":
         with st.form("form_saude", clear_on_submit=True):
             data_manejo = st.date_input("Data do Manejo", datetime.today())
             categoria_manejo = st.selectbox("Tipo de Evento", ["Vacinação Preventiva", "Vermifugação", "Tratamento de Doença (ex: Casco/Mastite)", "Avaliação Famacha", "Outro"])
-            descricao_tratamento = st.text_input("Descrição (ex: Vacina Clostridiose, Aplicação de Ivomec)")
+            descricao_tratamento = st.text_input("Descrição (ex: Vacina Clostridiose, Antibiótico Borgal, Vermífugo)")
             
-            # Nova Lógica: Seleção de Dose caso seja Vacinação Preventiva
             dose_tipo = "N/A"
             proxima_dose_data = "Não possui"
             
             if categoria_manejo == "Vacinação Preventiva":
                 st.markdown("#### 💉 Detalhes da Dose")
                 dose_tipo = st.selectbox("Esquema de Dose:", ["Dose Única", "1ª Dose", "2ª Dose"])
-                
-                # Se necessitar de mais doses, abre o campo de calendário para agendar o reforço
                 if dose_tipo in ["1ª Dose", "2ª Dose"]:
-                    proxima_dose_data = st.date_input("Data do Próximo Reforço / Próxima Dose", datetime.today())
+                    proxima_dose_data = st.date_input("Data do Próximo Reforço", datetime.today())
                     proxima_dose_data = str(proxima_dose_data)
             
-            carencia = st.text_input("Período de Carência", value="Não possui")
+            # Nova Lógica: Seleção da data final de carência via calendário
+            st.markdown("#### ⏳ Período de Carência (Abate/Leite)")
+            possui_carencia = st.radio("Este tratamento possui período de carência?", ["Não", "Sim"], horizontal=True)
+            
+            if possui_carencia == "Sim":
+                data_fim_carencia = st.date_input("Data Final da Carência (Até quando o consumo está suspenso)", datetime.today())
+                carencia_salvar = str(data_fim_carencia)
+            else:
+                carencia_salvar = "Não possui"
             
             if tipo_manejo.startswith("Individual"):
                 opcoes_saude = {k: obter_nome_exibicao(k, v) for k, v in dados_rebanho.items()}
@@ -761,7 +814,7 @@ elif menu == "Controle Sanitário/Médico":
                         "descricao": os_descricao,
                         "dose_tipo": dose_tipo,
                         "proxima_dose": proxima_dose_data,
-                        "carencia": carencia
+                        "carencia": carencia_salvar
                     }
                     for brinco in animais_alvo:
                         dados_rebanho[brinco]["historico_saude"].append(registro)
@@ -780,5 +833,5 @@ elif menu == "Controle Sanitário/Médico":
                 st.info("Nenhum registro de saúde encontrado para este animal.")
             else:
                 df_saude = pd.DataFrame(historico)
-                df_saude.columns = ["Data", "Tipo de Evento", "Descrição / Medicamento", "Dose", "Próxima Dose", "Período de Carência"]
+                df_saude.columns = ["Data", "Tipo de Evento", "Descrição", "Dose", "Próxima Dose", "Carência (Data Fim)"]
                 st.table(df_saude)
