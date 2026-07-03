@@ -583,7 +583,7 @@ if menu == "Painel Geral (Dashboard)":
                 
                 st.markdown("---")
                 if ativos:
-                    # Tabela expandida com colunas para Vacina e Carência
+                    # Correção aplicada aqui: Usando st.markdown com legenda nativa para evitar falhas do Streamlit util
                     c_head = st.columns([1.8, 1.2, 1.2, 1.6, 1.2, 1.5, 1.5])
                     c_head[0].markdown("**Identificação / Nome**")
                     c_head[1].markdown("**Raça**")
@@ -601,16 +601,16 @@ if menu == "Painel Geral (Dashboard)":
                         c_row[2].write(f_at["sexo"])
                         c_row[3].write(calcular_idade(f_at["data_nascimento"]))
                         
-                        # Processar sinalização de vacina
+                        # Processar sinalização de vacina com Markdown limpo
                         status_v, desc_v = verificar_status_vacinal(f_at)
                         if status_v:
-                            c_row[4].write(status_v, help=desc_v)
+                            c_row[4].markdown(f"{status_v}", help=desc_v)
                         else:
                             c_row[4].write("Em dia")
                             
-                        # Processar sinalização de carência médica
+                        # Processar sinalização de carência médica com Markdown limpo (Evita o TypeError anterior)
                         status_c, desc_c = verificar_status_carencia(f_at)
-                        c_row[5].write(status_c, help=desc_c)
+                        c_row[5].markdown(f"{status_c}", help=desc_c)
                             
                         if c_row[6].button("🔎 Ficha", key=f"abrir_{brinco}"):
                             st.session_state.visualizar_brinco = brinco
@@ -716,7 +716,7 @@ elif menu == "Registrar Entrada (Cadastro)":
                     "raca": raca,
                     "sexo": sexo,
                     "data_nascimento": str(data_nascimento),
-                    "origem": origem,
+                    "origem": origin,
                     "pai": pai,
                     "mae": mae,
                     "status": "Ativo",
@@ -783,7 +783,7 @@ elif menu == "Controle Sanitário/Médico":
                     proxima_dose_data = st.date_input("Data do Próximo Reforço", datetime.today())
                     proxima_dose_data = str(proxima_dose_data)
             
-            # Nova Lógica: Seleção da data final de carência via calendário
+            # Seleção da data final de carência via calendário
             st.markdown("#### ⏳ Período de Carência (Abate/Leite)")
             possui_carencia = st.radio("Este tratamento possui período de carência?", ["Não", "Sim"], horizontal=True)
             
