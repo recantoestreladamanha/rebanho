@@ -94,7 +94,7 @@ if FPDF_DISPONIVEL:
         pdf.cell(0, 10, remover_acentos('RELATORIO DE ANIMAIS ATIVOS NO REBANHO'), 0, 1, 'L')
         pdf.ln(4)
         
-        # Cabeçalho da Tabela (Totalizando 190mm de largura útil A4)
+        # Cabeçalho da Tabela
         pdf.set_font('Arial', 'B', 10)
         pdf.cell(30, 8, remover_acentos('Brinco/ID'), 1, 0, 'C')
         pdf.cell(45, 8, remover_acentos('Raca'), 1, 0, 'C')
@@ -236,27 +236,22 @@ if FPDF_DISPONIVEL:
         return pdf.output(dest='S').encode('latin1')
 
 # ------------------------------------------------------------------------------------------
-# INJEÇÃO DE CSS DE ADAPTABILIDADE MOBILE E LAYOUT RESPONSIVO
+# INJEÇÃO DE CSS DE ADAPTABILIDADE MOBILE
 # ------------------------------------------------------------------------------------------
 
 st.markdown("""
     <style>
-    /* Otimização de áreas de botões para facilitar cliques com dedos em touchscreens */
     .stButton > button {
         width: 100% !important;
-        min-height: 44px !important; /* Tamanho de toque padrão mobile */
+        min-height: 44px !important;
         border-radius: 8px !important;
         font-weight: 600 !important;
         margin-bottom: 5px !important;
     }
-    
-    /* Configuração de contêineres e margens para evitar scroll horizontal em aparelhos móveis */
     div[data-testid="column"] {
         padding: 5px !important;
         min-width: 150px !important;
     }
-    
-    /* Estilo amigável de cards informativos para facilitar leitura rápida no celular */
     .card-rebanho {
         background-color: #f8f9fa;
         border-radius: 10px;
@@ -279,42 +274,32 @@ if "visualizar_brinco" not in st.session_state:
 
 dados_rebanho = st.session_state.rebanho
 
-# Título do Aplicativo
 st.title("🐑 Sistema de Gerenciamento de Rebanho Ovino")
 st.markdown("---")
 
-# Menu de navegação lateral clássico
 menu = st.sidebar.selectbox(
     "Navegação",
     ["Painel Geral (Dashboard)", "Registrar Entrada (Cadastro)", "Registrar Saída (Baixa)", "Controle Sanitário/Médico"]
 )
 
-# Caso o usuário troque de módulo no menu lateral, removemos o foco da ficha individual
 if menu != "Painel Geral (Dashboard)":
     st.session_state.visualizar_brinco = None
 
-# Alerta sobre a ativação dos PDFs na barra lateral, se necessário
 if not FPDF_DISPONIVEL:
-    st.sidebar.warning("⚠️ **Geração de PDF Desativada**\n\nAdicione `fpdf` ao seu arquivo `requirements.txt` no GitHub para habilitar a geração de relatórios em PDF.")
+    st.sidebar.warning("⚠️ **Geração de PDF Desativada**\n\nAdicione `fpdf` ao seu arquivo `requirements.txt` no GitHub.")
 
 # ------------------------------------------------------------------------------------------
 # PAINEL GERAL (DASHBOARD)
 # ------------------------------------------------------------------------------------------
 if menu == "Painel Geral (Dashboard)":
     
-    # ------------------------------------------------------------------------------------------
-    # VISUALIZAÇÃO DE FICHA DETALHADA INDIVIDUAL (SELECIONADO)
-    # ------------------------------------------------------------------------------------------
     if st.session_state.visualizar_brinco:
         id_sel = st.session_state.visualizar_brinco
         ficha = dados_rebanho[id_sel]
         
-        # Botão de retorno superior (Grande e fácil de tocar no celular)
         st.button("⬅️ Voltar para a Lista de Animais", on_click=lambda: st.session_state.update({"visualizar_brinco": None}))
-        
         st.header(f"🗂️ Ficha do Animal: Brinco {id_sel}")
         
-        # Seção de botões de Ações Rápidas da Ficha (Retornar e Baixar PDF)
         col_pdf_f, col_ret_f = st.columns([1, 1])
         with col_pdf_f:
             if FPDF_DISPONIVEL:
@@ -329,10 +314,7 @@ if menu == "Painel Geral (Dashboard)":
                     )
                 except Exception as e:
                     st.error(f"Erro ao compilar PDF: {e}")
-            else:
-                st.info("💡 Habilite o suporte a PDF no arquivo requirements.txt")
         
-        # Colunas principais da Ficha (Adapta para empilhar em celulares)
         col_esquerda, col_direita = st.columns(2)
         
         with col_esquerda:
@@ -345,7 +327,6 @@ if menu == "Painel Geral (Dashboard)":
             st.markdown(f"**Mãe (Matriz):** {ficha['mae']}")
             st.markdown(f"**Situação Atual:** :green[{ficha['status']}]" if ficha['status'] == "Ativo" else f":red[Baixa ({ficha['status']})]")
             
-            # Alerta informativo de baixas
             if ficha['status'] != "Ativo":
                 st.warning(f"⚠️ **Este animal está inativo no rebanho.**\n\n"
                            f"**Motivo da Saída:** {ficha['status']}\n\n"
@@ -363,7 +344,7 @@ if menu == "Painel Geral (Dashboard)":
         with col_direita:
             st.subheader("📝 Observações e Anotações Gerais")
             obs_atual = ficha.get("observacoes", "")
-            nova_obs = st.text_area("Insira aqui anotações importantes (temperamento, facilidade de parto, etc.)", value=obs_atual, height=150)
+            nova_obs = st.text_area("Insira aqui anotações importantes", value=obs_atual, height=150)
             
             if st.button("💾 Salvar Anotações"):
                 dados_rebanho[id_sel]["observacoes"] = nova_obs
@@ -372,8 +353,6 @@ if menu == "Painel Geral (Dashboard)":
                 st.rerun()
                 
         st.markdown("---")
-        
-        # Abas inferiores internas da Ficha
         aba_saude, aba_crias = st.tabs(["🏥 Histórico de Saúde", "🧬 Crias (Descendentes)"])
         
         with aba_saude:
@@ -398,54 +377,37 @@ if menu == "Painel Geral (Dashboard)":
                         "Idade": calcular_idade(b_info["data_nascimento"]),
                         "Status": b_info["status"]
                     })
-            
             if not filhos:
                 st.info("Nenhum descendente direto cadastrado para este animal.")
             else:
                 df_filhos = pd.DataFrame(filhos)
                 st.dataframe(df_filhos, use_container_width=True, hide_index=True)
                 
-    # ------------------------------------------------------------------------------------------
-    # LISTAGEM GERAL DE ANIMAIS (ATIVOS / INATIVOS)
-    # ------------------------------------------------------------------------------------------
     else:
         st.header("📊 Painel Geral do Rebanho")
         
         if not dados_rebanho:
-            st.info("Nenhum animal cadastrado no momento. Vá em 'Registrar Entrada' para começar.")
+            st.info("Nenhum animal cadastrado no momento.")
         else:
-            # Filtros básicos de dados
             ativos = {k: v for k, v in dados_rebanho.items() if v["status"] == "Ativo"}
             baixas = {k: v for k, v in dados_rebanho.items() if v["status"] != "Ativo"}
             
-            # Painel numérico simplificado (métrica amigável para telas de celular)
             col1, col2, col3 = st.columns(3)
             col1.metric("Animais Ativos", len(ativos))
             col2.metric("Baixas Registradas", len(baixas))
             col3.metric("Cadastro Histórico", len(dados_rebanho))
             
-            # Divisão primária em Abas principais de visualização
             tab_ativos, tab_inativos = st.tabs(["🟢 Animais Ativos", "🔴 Animais Inativos (Baixas)"])
             
-            # --------------------------------------------------------------------------------------
-            # ABA: ANIMAIS ATIVOS
-            # --------------------------------------------------------------------------------------
             with tab_ativos:
                 st.subheader("📋 Lista de Animais Ativos no Rebanho")
-                
-                # Barra de busca rápida móvel para acessar a ficha de forma instantânea
                 col_busca, col_pdf_ativos = st.columns([2, 1])
                 with col_busca:
-                    busca_id = st.selectbox(
-                        "🔍 Busca Rápida de Animal Ativo (Brinco):",
-                        ["Selecione..."] + list(ativos.keys()),
-                        key="busca_ativo_mobile"
-                    )
+                    busca_id = st.selectbox("🔍 Busca Rápida de Animal Ativo (Brinco):", ["Selecione..."] + list(ativos.keys()), key="busca_ativo_mobile")
                     if busca_id != "Selecione...":
                         st.session_state.visualizar_brinco = busca_id
                         st.rerun()
                 
-                # Botão de download do relatório de ativos
                 with col_pdf_ativos:
                     if FPDF_DISPONIVEL and ativos:
                         try:
@@ -461,9 +423,7 @@ if menu == "Painel Geral (Dashboard)":
                             st.error(f"Erro de PDF: {e}")
                 
                 st.markdown("---")
-                
                 if ativos:
-                    # Cabeçalhos da tabela simplificada (adaptados para evitar colunas excessivas no celular)
                     c_head = st.columns([1.5, 2, 2, 2.5, 2])
                     c_head[0].markdown("**Brinco**")
                     c_head[1].markdown("**Raça**")
@@ -472,41 +432,28 @@ if menu == "Painel Geral (Dashboard)":
                     c_head[4].markdown("**Ações**")
                     st.markdown("<hr style='margin: 8px 0;'>", unsafe_allow_html=True)
                     
-                    # Linhas da tabela com espaçamento generoso para toque em celular
                     for brinco, ficha_at in ativos.items():
                         c_row = st.columns([1.5, 2, 2, 2.5, 2])
                         c_row[0].write(brinco)
                         c_row[1].write(ficha_at["raca"])
                         c_row[2].write(ficha_at["sexo"])
                         c_row[3].write(calcular_idade(ficha_at["data_nascimento"]))
-                        
                         if c_row[4].button("🔎 Ficha", key=f"abrir_{brinco}"):
                             st.session_state.visualizar_brinco = brinco
                             st.rerun()
-                        
                         st.markdown("<div style='border-bottom: 1px solid #f0f2f6; margin: 4px 0;'></div>", unsafe_allow_html=True)
                 else:
                     st.warning("Não há animais ativos no momento.")
             
-            # --------------------------------------------------------------------------------------
-            # ABA: ANIMAIS INATIVOS (BAIXAS)
-            # --------------------------------------------------------------------------------------
             with tab_inativos:
                 st.subheader("🪵 Histórico de Baixas")
-                
-                # Barra de busca rápida de inativos
                 col_busca_in, col_pdf_inativos = st.columns([2, 1])
                 with col_busca_in:
-                    busca_id_in = st.selectbox(
-                        "🔍 Busca Rápida de Inativo (Brinco):",
-                        ["Selecione..."] + list(baixas.keys()),
-                        key="busca_inativo_mobile"
-                    )
+                    busca_id_in = st.selectbox("🔍 Busca Rápida de Inativo (Brinco):", ["Selecione..."] + list(baixas.keys()), key="busca_inativo_mobile")
                     if busca_id_in != "Selecione...":
                         st.session_state.visualizar_brinco = busca_id_in
                         st.rerun()
                 
-                # Botão de download de inativos em PDF
                 with col_pdf_inativos:
                     if FPDF_DISPONIVEL and baixas:
                         try:
@@ -522,7 +469,6 @@ if menu == "Painel Geral (Dashboard)":
                             st.error(f"Erro de PDF: {e}")
                 
                 st.markdown("---")
-                
                 if baixas:
                     c_head_in = st.columns([1.5, 2, 2, 2.5, 2])
                     c_head_in[0].markdown("**Brinco**")
@@ -537,12 +483,9 @@ if menu == "Painel Geral (Dashboard)":
                         c_row_in[0].write(brinco)
                         c_row_in[1].write(ficha_in["raca"])
                         c_row_in[2].write(ficha_in["sexo"])
-                        
-                        # Combinação do motivo e data para otimizar espaço lateral em telas pequenas
                         motivo_data = f"{ficha_in['status']} ({ficha_in.get('data_saida', 'N/I')})"
                         c_row_in[3].write(motivo_data)
                         
-                        # Botões empilhados verticalmente em celulares
                         with c_row_in[4]:
                             if st.button("🔎 Ficha", key=f"abrir_in_{brinco}"):
                                 st.session_state.visualizar_brinco = brinco
@@ -554,7 +497,6 @@ if menu == "Painel Geral (Dashboard)":
                                 salvar_dados(dados_rebanho)
                                 st.success(f"O animal {brinco} foi reativado com sucesso!")
                                 st.rerun()
-                        
                         st.markdown("<div style='border-bottom: 1px solid #f0f2f6; margin: 4px 0;'></div>", unsafe_allow_html=True)
                 else:
                     st.info("Nenhuma baixa cadastrada.")
@@ -617,7 +559,7 @@ elif menu == "Registrar Saída (Baixa)":
             animal_selecionado = st.selectbox("Selecione o Animal (Brinco)", list(ativos.keys()))
             motivo_saida = st.selectbox("Motivo da Saída", ["Morte", "Venda", "Doação"])
             data_saida = st.date_input("Data da Saída", datetime.today())
-            detalhes_saida = st.text_area("Observações adicionais (ex: Causa da morte ou valor da venda)")
+            detalhes_saida = st.text_area("Observações adicionais")
             
             enviar_baixa = st.form_submit_button("Registrar Baixa")
             
@@ -643,8 +585,8 @@ elif menu == "Controle Sanitário/Médico":
         with st.form("form_saude", clear_on_submit=True):
             data_manejo = st.date_input("Data do Manejo", datetime.today())
             categoria_manejo = st.selectbox("Tipo de Evento", ["Vacinação Preventiva", "Vermifugação", "Tratamento de Doença (ex: Casco/Mastite)", "Avaliação Famacha", "Outro"])
-            descricao_tratamento = st.text_input("Descrição (ex: Vacina Clostridiose, Aplicação de Ivomec, Tratamento com Antibiótico)")
-            carencia = st.text_input("Período de Carência (Tempo sem abater/consumir leite)", value="Não possui")
+            descricao_tratamento = st.text_input("Descrição")
+            carencia = st.text_input("Período de Carência", value="Não possui")
             
             if tipo_manejo.startswith("Individual"):
                 animais_alvo = [st.selectbox("Selecione o Animal (Brinco)", list(dados_rebanho.keys()))]
@@ -654,10 +596,11 @@ elif menu == "Controle Sanitário/Médico":
             enviar_saude = st.form_submit_button("Gravar Registro de Saúde")
             
             if enviar_saude:
-                if not os_descricao := descricao_tratamento.strip():
+                os_descricao = descricao_tratamento.strip()
+                if not os_descricao:
                     st.error("Por favor, descreva o tratamento ou vacina aplicado.")
                 elif not animais_alvo:
-                    st.error("Nenhum animal selecionado ou ativo para receber o manejo.")
+                    st.error("Nenhum animal selecionado ou ativo.")
                 else:
                     registro = {
                         "data": str(data_manejo),
@@ -665,12 +608,10 @@ elif menu == "Controle Sanitário/Médico":
                         "descricao": os_descricao,
                         "carencia": carencia
                     }
-                    
                     for brinco in animais_alvo:
                         dados_rebanho[brinco]["historico_saude"].append(registro)
-                        
                     salvar_dados(dados_rebanho)
-                    st.success(f"Registro de saúde adicionado com sucesso para {len(animais_alvo)} animal(ais)!")
+                    st.success(f"Registro de saúde adicionado com sucesso!")
                     st.rerun()
                     
         st.markdown("---")
