@@ -22,16 +22,11 @@ except ImportError:
 # ------------------------------------------------------------------------------------------
 
 def remover_acentos(texto):
-    """
-    Remove acentos e caracteres especiais para evitar erros de renderização 
-    em PDFs que utilizam fontes padrão do sistema (como Helvetica ou Arial).
-    """
     if not isinstance(texto, str):
         return str(texto)
     nfkd_form = unicodedata.normalize('NFKD', texto)
     return "".join([c for c in nfkd_form if not unicodedata.combining(c)])
 
-# Função para calcular a idade de forma amigável
 def calcular_idade(data_nasc_str):
     try:
         nasc = datetime.strptime(data_nasc_str, "%Y-%m-%d")
@@ -51,7 +46,6 @@ def calcular_idade(data_nasc_str):
     except:
         return "Não informada"
 
-# Função para carregar os dados salvos
 def carregar_dados():
     if os.path.exists(ARQUIVO_DADOS):
         try:
@@ -61,12 +55,10 @@ def carregar_dados():
             return {}
     return {}
 
-# Função para salvar os dados
 def salvar_dados(dados):
     with open(ARQUIVO_DADOS, "w", encoding="utf-8") as f:
         json.dump(dados, f, indent=4, ensure_ascii=False)
 
-# Função auxiliar para gerar rótulo bonito do animal (ID - Nome se houver)
 def obter_nome_exibicao(id_brinco, ficha_animal):
     nome = ficha_animal.get("nome", "").strip()
     if nome:
@@ -268,21 +260,60 @@ if "rebanho" not in st.session_state:
 if "visualizar_brinco" not in st.session_state:
     st.session_state.visualizar_brinco = None
 
+# Controle do Menu por botões via Session State
+if "menu_atual" not in st.session_state:
+    st.session_state.menu_atual = "Painel Geral (Dashboard)"
+
 dados_rebanho = st.session_state.rebanho
 
 st.title("🐑 Sistema de Gerenciamento de Rebanho Ovino")
 st.markdown("---")
 
-menu = st.sidebar.selectbox(
-    "Navegação",
-    ["Painel Geral (Dashboard)", "Registrar Entrada (Cadastro)", "Registrar Saída (Baixa)", "Controle Sanitário/Médico"]
-)
+# ------------------------------------------------------------------------------------------
+# MENU LATERAL COM BOTÕES
+# ------------------------------------------------------------------------------------------
+st.sidebar.markdown("### 📋 Menu de Navegação")
 
-if menu != "Painel Geral (Dashboard)":
+# Funções auxiliares para mudar de aba limpando focos individuais
+def ir_para_dashboard():
+    st.session_state.menu_atual = "Painel Geral (Dashboard)"
     st.session_state.visualizar_brinco = None
+
+def ir_para_cadastro():
+    st.session_state.menu_atual = "Registrar Entrada (Cadastro)"
+    st.session_state.visualizar_brinco = None
+
+def ir_para_baixa():
+    st.session_state.menu_atual = "Registrar Saída (Baixa)"
+    st.session_state.visualizar_brinco = None
+
+def ir_para_saude():
+    st.session_state.menu_atual = "Controle Sanitário/Médico"
+    st.session_state.visualizar_brinco = None
+
+# Botões da Barra Lateral com marcadores visuais do botão selecionado
+if st.sidebar.button("📊 Painel Geral (Dashboard)", key="btn_menu_dash", type="primary" if st.session_state.menu_atual == "Painel Geral (Dashboard)" else "secondary"):
+    ir_para_dashboard()
+    st.rerun()
+
+if st.sidebar.button("➕ Registrar Entrada (Cadastro)", key="btn_menu_cad", type="primary" if st.session_state.menu_atual == "Registrar Entrada (Cadastro)" else "secondary"):
+    ir_para_cadastro()
+    st.rerun()
+
+if st.sidebar.button("❌ Registrar Saída (Baixa)", key="btn_menu_baixa", type="primary" if st.session_state.menu_atual == "Registrar Saída (Baixa)" else "secondary"):
+    ir_para_baixa()
+    st.rerun()
+
+if st.sidebar.button("🏥 Controle Sanitário/Médico", key="btn_menu_saude", type="primary" if st.session_state.menu_atual == "Controle Sanitário/Médico" else "secondary"):
+    ir_para_saude()
+    st.rerun()
+
+st.sidebar.markdown("---")
 
 if not FPDF_DISPONIVEL:
     st.sidebar.warning("⚠️ **Geração de PDF Desativada**\n\nAdicione `fpdf` ao seu arquivo `requirements.txt` no GitHub.")
+
+menu = st.session_state.menu_atual
 
 # ------------------------------------------------------------------------------------------
 # PAINEL GERAL (DASHBOARD)
@@ -525,7 +556,6 @@ elif menu == "Registrar Entrada (Cadastro)":
         
         st.markdown("### 🧬 Controle Parental (Genealogia)")
         
-        # Mapeamento de nomes de exibição para a seleção de pais
         opcoes_pais = {"Não Informado": "Não Informado"}
         for k, v in dados_rebanho.items():
             opcoes_pais[k] = obter_nome_exibicao(k, v)
