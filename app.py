@@ -95,30 +95,36 @@ def obter_peso_atual(ficha_animal):
     """Retorna o último peso registrado e a data formatada"""
     historico = ficha_animal.get("historico_pesos", [])
     if historico:
-        # Pega a última pesagem da lista de rotina
         ultima = historico[-1]
         try:
-            dt_form = datetime.strptime(ultima["data"], "%Y-%m-%d").strftime("%d/%m/%Y")
+            dt_form = datetime.strptime(ultima["data"], "%Y-%m-%d").date().strftime("%d/%m/%Y")
         except:
             dt_form = ultima["data"]
         return f"{float(ultima['peso']):.1f} kg ({dt_form})"
     
-    # Se não tiver histórico de rotina, busca os pesos de fase base
     if float(ficha_animal.get("peso_entrada", 0.0)) > 0:
         try:
-            dt_form = datetime.strptime(ficha_animal["data_nascimento"], "%Y-%m-%d").strftime("%d/%m/%Y")
+            dt_form = datetime.strptime(ficha_animal["data_nascimento"], "%Y-%m-%d").date().strftime("%d/%m/%Y")
         except:
             dt_form = "Entrada"
         return f"{float(ficha_animal['peso_entrada']):.1f} kg ({dt_form})"
         
     if float(ficha_animal.get("peso_nascer", 0.0)) > 0:
         try:
-            dt_form = datetime.strptime(ficha_animal["data_nascimento"], "%Y-%m-%d").strftime("%d/%m/%Y")
+            dt_form = datetime.strptime(ficha_animal["data_nascimento"], "%Y-%m-%d").date().strftime("%d/%m/%Y")
         except:
             dt_form = "Nasc."
         return f"{float(ficha_animal['peso_nascer']):.1f} kg ({dt_form})"
         
     return "Não pesado"
+
+def normalizar_sexo(sexo_str):
+    """Garante que na listagem apareça apenas Macho ou Fêmea"""
+    if not sexo_str:
+        return "Não informado"
+    if "f" in sexo_str.lower() or "fê" in sexo_str.lower():
+        return "Fêmea"
+    return "Macho"
 
 def verificar_status_vacinal(ficha_animal):
     historico = ficha_animal.get("historico_saude", [])
@@ -211,7 +217,7 @@ if FPDF_DISPONIVEL:
         for brinco, f in ativos.items():
             pdf.cell(40, 8, remover_acentos(obter_nome_exibicao(brinco, f)), 1, 0, 'C')
             pdf.cell(35, 8, remover_acentos(f['raca']), 1, 0, 'C')
-            pdf.cell(30, 8, remover_acentos(f['sexo']), 1, 0, 'C')
+            pdf.cell(30, 8, remover_acentos(normalizar_sexo(f['sexo'])), 1, 0, 'C')
             pdf.cell(45, 8, remover_acentos(calcular_idade(f['data_nascimento'])), 1, 0, 'C')
             pdf.cell(40, 8, remover_acentos(obter_peso_atual(f).split(" (")[0]), 1, 1, 'C')
             
@@ -233,7 +239,7 @@ if FPDF_DISPONIVEL:
         pdf.cell(95, 6, remover_acentos(f'Identificacao: {brinco}'), 0, 0)
         pdf.cell(95, 6, remover_acentos(f'Nome: {ficha.get("nome", "Nao informado")}'), 0, 1)
         pdf.cell(95, 6, remover_acentos(f'Raca: {ficha["raca"]}'), 0, 0)
-        pdf.cell(95, 6, remover_acentos(f'Sexo: {ficha["sexo"]}'), 0, 1)
+        pdf.cell(95, 6, remover_acentos(f'Sexo: {normalizar_sexo(ficha["sexo"])}'), 0, 1)
         pdf.cell(95, 6, remover_acentos(f'Nascimento: {ficha["data_nascimento"]}'), 0, 0)
         pdf.cell(95, 6, remover_acentos(f'Idade: {calcular_idade(ficha["data_nascimento"])}'), 0, 1)
         pdf.cell(95, 6, remover_acentos(f'Origem: {ficha.get("origem", "Nao informada")}'), 0, 1)
@@ -251,7 +257,7 @@ if FPDF_DISPONIVEL:
             pdf.cell(0, 6, remover_acentos(f'- Peso de Entrada: {ficha["peso_entrada"]} kg'), 0, 1)
             
         for p in ficha.get("historico_pesos", []):
-            dt_p = datetime.strptime(p['data'], "%Y-%m-%d").strftime("%d/%m/%Y")
+            dt_p = datetime.strptime(p['data'], "%Y-%m-%d").date().strftime("%d/%m/%Y")
             pdf.cell(0, 6, remover_acentos(f'- Data {dt_p}: {p["peso"]} kg'), 0, 1)
         pdf.ln(5)
         
@@ -353,6 +359,7 @@ if st.sidebar.button("🏥 Controle Sanitário/Médico", type="primary" if st.se
     st.session_state.menu_atual = "Controle Sanitário/Médico"; st.session_state.visualizar_brinco = None; st.rerun()
 
 st.sidebar.markdown("---")
+st.sidebar.markdown("---")
 st.sidebar.markdown("⚡ *Conectado à nuvem estável Supabase*")
 
 menu = st.session_state.menu_atual
@@ -407,7 +414,7 @@ if menu == "Painel Geral (Dashboard)":
         with col_infos:
             st.subheader("📋 Informações Cadastrais")
             st.markdown(f"**Identificação:** {id_sel} | **Nome:** {ficha.get('nome', 'Não informado')}")
-            st.markdown(f"**Raça:** {ficha['raca']} | **Sexo:** {ficha['sexo']}")
+            st.markdown(f"**Raça:** {ficha['raca']} | **Sexo:** {normalizar_sexo(ficha['sexo'])}")
             st.markdown(f"**Idade:** {calcular_idade(ficha['data_nascimento'])} *({ficha['data_nascimento']})*")
             st.markdown(f"**Forma de Entrada:** {ficha.get('origem', 'Não informada')}")
             
@@ -434,7 +441,7 @@ if menu == "Painel Geral (Dashboard)":
                     dados_rebanho[id_sel]["peso_desmame"] = peso_desm
                     dados_rebanho[id_sel]["peso_entrada"] = peso_ent_atualizar
                     salvar_dados(dados_rebanho)
-                    st.success("Pesos base atualizados!")
+                    st.success("Pesos base updated!")
                     st.rerun()
             
             with c_p2:
@@ -463,7 +470,7 @@ if menu == "Painel Geral (Dashboard)":
                 lista_pesos.append({"Fase/Data": "Entrada no Recanto", "Peso (kg)": ficha["peso_entrada"]})
                 
             for p in ficha.get("historico_pesos", []):
-                lista_pesos.append({"Fase/Data": datetime.strptime(p['data'], "%Y-%m-%d").strftime("%d/%m/%Y"), "Peso (kg)": p['peso']})
+                lista_pesos.append({"Fase/Data": datetime.strptime(p['data'], "%Y-%m-%d").date().strftime("%d/%m/%Y"), "Peso (kg)": p['peso']})
                 
             if lista_pesos:
                 st.table(pd.DataFrame(lista_pesos))
@@ -479,7 +486,7 @@ if menu == "Painel Geral (Dashboard)":
                 exibir_lista = []
                 for h in historico:
                     exibir_lista.append({
-                        "Data": datetime.strptime(h['data'], "%Y-%m-%d").strftime("%d/%m/%Y"),
+                        "Data": datetime.strptime(h['data'], "%Y-%m-%d").date().strftime("%d/%m/%Y"),
                         "Evento": h['categoria'],
                         "Descrição": h['descricao'],
                         "Dose": h.get('dose_tipo', 'N/A'),
@@ -528,7 +535,7 @@ if menu == "Painel Geral (Dashboard)":
                 st.subheader("📋 Lista de Animais Ativos")
                 
                 if ativos:
-                    # Tabela reestruturada com Peso Atual (Carência removida)
+                    # Tabela limpa com coluna "Sexo" mostrando estritamente apenas Macho/Fêmea
                     c_head = st.columns([1.8, 1.2, 1.2, 1.5, 1.5, 1.8, 1.5])
                     c_head[0].markdown("**ID / Nome**")
                     c_head[1].markdown("**Raça**")
@@ -543,13 +550,12 @@ if menu == "Painel Geral (Dashboard)":
                         c_row = st.columns([1.8, 1.2, 1.2, 1.5, 1.5, 1.8, 1.5])
                         c_row[0].write(obter_nome_exibicao(brinco, f_at))
                         c_row[1].write(f_at["raca"])
-                        c_row[2].write(f_at["sexo"])
+                        c_row[2].write(normalizar_sexo(f_at["sexo"]))
                         c_row[3].write(calcular_idade(f_at["data_nascimento"]))
                         
                         status_v, desc_v = verificar_status_vacinal(f_at)
                         c_row[4].markdown(f"{status_v if status_v else 'Em dia'}", help=desc_v)
                         
-                        # Nova Coluna: Peso Atual com a data
                         c_row[5].write(obter_peso_atual(f_at))
                             
                         if c_row[6].button("🔎 Abrir Ficha", key=f"abrir_{brinco}"):
@@ -572,7 +578,7 @@ if menu == "Painel Geral (Dashboard)":
                         c_row_in = st.columns([2, 2, 1.5, 2.5, 2])
                         c_row_in[0].write(obter_nome_exibicao(brinco, f_in))
                         c_row_in[1].write(f_in["raca"])
-                        c_row_in[2].write(f_in["sexo"])
+                        c_row_in[2].write(normalizar_sexo(f_in["sexo"]))
                         c_row_in[3].write(f"{f_in['status']} ({f_in.get('data_saida', 'N/I')})")
                         if c_row_in[4].button("🔎 Abrir Ficha", key=f"abrir_in_{brinco}"):
                             st.session_state.visualizar_brinco = brinco
@@ -594,7 +600,7 @@ elif menu == "Registrar Entrada (Cadastro)":
             nome_animal = st.text_input("Nome / Alcunha (Opcional)")
             
         raca = st.selectbox("Raça", ["Santa Inês", "Dorper", "Texel", "Suffolk", "Sem Raça Definida (SRD)"])
-        sexo = st.radio("Sexo", ["Fêmea (Matriz/Borrega)", "Macho (Reprodutor/Borrego)"], horizontal=True)
+        sexo = st.radio("Sexo", ["Fêmea", "Macho"], horizontal=True)
         data_nascimento = st.date_input("Data de Nascimento/Chegada", datetime.today())
         origem = st.selectbox("Forma de Entrada", ["Compra", "Procriação (Nascimento)", "Doação"])
         
@@ -642,8 +648,8 @@ elif menu == "Registrar Saída (Baixa)":
         st.info("Nenhum animal ativo para dar baixa.")
     else:
         with st.form("form_saida", clear_on_submit=True):
-            opcoes_baixa = {k: obter_nome_exibicao(k, v) for k, v in ativos.items()}
-            animal_selecionado = st.selectbox("Selecione o Animal", list(opcoes_baixa.keys()), format_func=lambda x: opcoes_baixa[x])
+            options_baixa = {k: obter_nome_exibicao(k, v) for k, v in ativos.items()}
+            animal_selecionado = st.selectbox("Selecione o Animal", list(options_baixa.keys()), format_func=lambda x: options_baixa[x])
             motivo_saida = st.selectbox("Motivo da Saída", ["Morte", "Venda", "Doação"])
             data_saida = st.date_input("Data da Saída", datetime.today())
             detalhes_saida = st.text_area("Observações adicionais")
@@ -682,8 +688,8 @@ elif menu == "Controle Sanitário/Médico":
             carencia_salvar = str(st.date_input("Data Final", datetime.today())) if possui_carencia == "Sim" else "Não possui"
             
             if tipo_manejo == "Individual":
-                opcoes_saude = {k: obter_nome_exibicao(k, v) for k, v in dados_rebanho.items()}
-                animais_alvo = [st.selectbox("Selecione o Animal", list(opcoes_saude.keys()), format_func=lambda x: opcoes_saude[x])]
+                options_saude = {k: obter_nome_exibicao(k, v) for k, v in dados_rebanho.items()}
+                animais_alvo = [st.selectbox("Selecione o Animal", list(options_saude.keys()), format_func=lambda x: options_saude[x])]
             else:
                 animais_alvo = [k for k, v in dados_rebanho.items() if v["status"] == "Ativo"]
                 
