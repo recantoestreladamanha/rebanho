@@ -12,7 +12,7 @@ st.set_page_config(page_title="Recanto Estrela da Manhã - Gestão", page_icon="
 
 ARQUIVO_LOGO = "logo.png"
 
-# Tentativa de importação do FPDF para geração de relatórios
+# Geração de relatórios PDF com FPDF
 FPDF_DISPONIVEL = True
 try:
     from fpdf import FPDF
@@ -34,7 +34,6 @@ def inicializar_supabase() -> Client:
 
 supabase = inicializar_supabase()
 
-# Função para garantir que os dados estejam prontos (Emulador NoSQL sobre Supabase para simplicidade de migração estável)
 def carregar_dados():
     if not supabase:
         return {}
@@ -43,16 +42,9 @@ def carregar_dados():
         if res.data:
             return json.loads(res.data[0]["conteudo"])
         else:
-            # Se a tabela estiver vazia, cria o registro inicial
             supabase.table("rebanho_dados").insert({"id": 1, "conteudo": "{}"}).execute()
             return {}
     except Exception:
-        # Se a tabela não existir, tentamos criar ou apenas retornamos vazio para o fluxo
-        try:
-            # Criação de contingência caso use SQL Editor do Supabase posterior
-            st.info("Nota: Certifique-se de criar a tabela 'rebanho_dados' com as colunas 'id' (int8, primary key) e 'conteudo' (text) no painel do Supabase se notar travamentos.")
-        except:
-            pass
         return {}
 
 def salvar_dados(dados):
@@ -65,7 +57,7 @@ def salvar_dados(dados):
         st.error(f"Erro ao salvar dados na nuvem: {e}")
 
 # ------------------------------------------------------------------------------------------
-# FUNÇÕES UTILITÁRIAS E MANEJO SANITÁRIO
+# FUNÇÕES UTILITÁRIAS E MANEJO SANITÁRIO / PONDERAL
 # ------------------------------------------------------------------------------------------
 
 def remover_acentos(texto):
@@ -99,6 +91,35 @@ def obter_nome_exibicao(id_brinco, ficha_animal):
         return f"{id_brinco} - {nome}"
     return id_brinco
 
+def obter_peso_atual(ficha_animal):
+    """Retorna o último peso registrado e a data formatada"""
+    historico = ficha_animal.get("historico_pesos", [])
+    if historico:
+        # Pega a última pesagem da lista de rotina
+        ultima = historico[-1]
+        try:
+            dt_form = datetime.strptime(ultima["data"], "%Y-%m-%d").strftime("%d/%m/%Y")
+        except:
+            dt_form = ultima["data"]
+        return f"{float(ultima['peso']):.1f} kg ({dt_form})"
+    
+    # Se não tiver histórico de rotina, busca os pesos de fase base
+    if float(ficha_animal.get("peso_entrada", 0.0)) > 0:
+        try:
+            dt_form = datetime.strptime(ficha_animal["data_nascimento"], "%Y-%m-%d").strftime("%d/%m/%Y")
+        except:
+            dt_form = "Entrada"
+        return f"{float(ficha_animal['peso_entrada']):.1f} kg ({dt_form})"
+        
+    if float(ficha_animal.get("peso_nascer", 0.0)) > 0:
+        try:
+            dt_form = datetime.strptime(ficha_animal["data_nascimento"], "%Y-%m-%d").strftime("%d/%m/%Y")
+        except:
+            dt_form = "Nasc."
+        return f"{float(ficha_animal['peso_nascer']):.1f} kg ({dt_form})"
+        
+    return "Não pesado"
+
 def verificar_status_vacinal(ficha_animal):
     historico = ficha_animal.get("historico_saude", [])
     vacinas_pendentes = []
@@ -106,7 +127,7 @@ def verificar_status_vacinal(ficha_animal):
     
     for h in historico:
         if h.get("dose_tipo", "") == "Uso Contínuo":
-            return "Status: 🩺 CONTÍNUO", f"Tratamento contínuo: {h.get('descricao', '')}"
+            return "🩺 CONTÍNUO", f"Tratamento contínuo: {h.get('descricao', '')}"
             
     for h in historico:
         prox_dose_str = h.get("proxima_dose", "")
@@ -152,6 +173,114 @@ def verificar_status_carencia(ficha_animal):
     carencias_ativas.sort(key=lambda x: x[1], reverse=True)
     nome_med, data_liberacao = carencias_ativas[0]
     return "⚠️ BLOQUEADO", f"Sob efeito de {nome_med}. Liberado apenas em {data_liberacao.strftime('%d/%m/%Y')}"
+
+# ------------------------------------------------------------------------------------------
+# CLASSES E GERADORES DE RELATÓRIO PDF
+# ------------------------------------------------------------------------------------------
+
+if FPDF_DISPONIVEL:
+    class PDFRelatorio(FPDF):
+        def header(self):
+            self.set_font('Arial', 'B', 12)
+            self.cell(0, 10, remover_acentos('RECANTO ESTRELA DA MANHA - GESTAO DE REBANHO'), 0, 1, 'C')
+            self.set_font('Arial', 'I', 8)
+            self.cell(0, 5, remover_acentos(f'Relatorio emitido em: {datetime.today().strftime("%d/%m/%Y %H:%M")}'), 0, 1, 'C')
+            self.line(10, 26, 200, 26)
+            self.ln(6)
+
+        def footer(self):
+            self.set_y(-15)
+            self.set_font('Arial', 'I', 8)
+            self.cell(0, 10, remover_acentos(f'Pagina {self.page_no()}'), 0, 0, 'C')
+
+    def gerar_pdf_ativos(ativos):
+        pdf = PDFRelatorio()
+        pdf.add_page()
+        pdf.set_font('Arial', 'B', 14)
+        pdf.cell(0, 10, remover_acentos('RELATORIO DE ANIMAIS ATIVOS NO REBANHO'), 0, 1, 'L')
+        pdf.ln(4)
+        
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(40, 8, remover_acentos('Identificacao/Nome'), 1, 0, 'C')
+        pdf.cell(35, 8, remover_acentos('Raca'), 1, 0, 'C')
+        pdf.cell(30, 8, remover_acentos('Sexo'), 1, 0, 'C')
+        pdf.cell(45, 8, remover_acentos('Idade'), 1, 0, 'C')
+        pdf.cell(40, 8, remover_acentos('Peso Atual'), 1, 1, 'C')
+        
+        pdf.set_font('Arial', '', 9)
+        for brinco, f in ativos.items():
+            pdf.cell(40, 8, remover_acentos(obter_nome_exibicao(brinco, f)), 1, 0, 'C')
+            pdf.cell(35, 8, remover_acentos(f['raca']), 1, 0, 'C')
+            pdf.cell(30, 8, remover_acentos(f['sexo']), 1, 0, 'C')
+            pdf.cell(45, 8, remover_acentos(calcular_idade(f['data_nascimento'])), 1, 0, 'C')
+            pdf.cell(40, 8, remover_acentos(obter_peso_atual(f).split(" (")[0]), 1, 1, 'C')
+            
+        return pdf.output(dest='S').encode('latin1')
+
+    def gerar_pdf_ficha_individual(brinco, ficha, todos_dados):
+        pdf = PDFRelatorio()
+        pdf.add_page()
+        
+        pdf.set_font('Arial', 'B', 14)
+        pdf.cell(0, 10, remover_acentos(f'FICHA INDIVIDUAL - ANIMAL: {obter_nome_exibicao(brinco, ficha)}'), 0, 1, 'L')
+        pdf.ln(3)
+        
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 8, remover_acentos('1. Informacoes Cadastrais'), 'B', 1, 'L')
+        pdf.ln(2)
+        
+        pdf.set_font('Arial', '', 10)
+        pdf.cell(95, 6, remover_acentos(f'Identificacao: {brinco}'), 0, 0)
+        pdf.cell(95, 6, remover_acentos(f'Nome: {ficha.get("nome", "Nao informado")}'), 0, 1)
+        pdf.cell(95, 6, remover_acentos(f'Raca: {ficha["raca"]}'), 0, 0)
+        pdf.cell(95, 6, remover_acentos(f'Sexo: {ficha["sexo"]}'), 0, 1)
+        pdf.cell(95, 6, remover_acentos(f'Nascimento: {ficha["data_nascimento"]}'), 0, 0)
+        pdf.cell(95, 6, remover_acentos(f'Idade: {calcular_idade(ficha["data_nascimento"])}'), 0, 1)
+        pdf.cell(95, 6, remover_acentos(f'Origem: {ficha.get("origem", "Nao informada")}'), 0, 1)
+        pdf.ln(5)
+        
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 8, remover_acentos('2. Historico de Pesagens'), 'B', 1, 'L')
+        pdf.ln(2)
+        pdf.set_font('Arial', '', 10)
+        if float(ficha.get("peso_nascer", 0.0)) > 0:
+            pdf.cell(0, 6, remover_acentos(f'- Peso ao Nascer: {ficha["peso_nascer"]} kg'), 0, 1)
+        if float(ficha.get("peso_desmame", 0.0)) > 0:
+            pdf.cell(0, 6, remover_acentos(f'- Peso ao Desmame: {ficha["peso_desmame"]} kg'), 0, 1)
+        if float(ficha.get("peso_entrada", 0.0)) > 0:
+            pdf.cell(0, 6, remover_acentos(f'- Peso de Entrada: {ficha["peso_entrada"]} kg'), 0, 1)
+            
+        for p in ficha.get("historico_pesos", []):
+            dt_p = datetime.strptime(p['data'], "%Y-%m-%d").strftime("%d/%m/%Y")
+            pdf.cell(0, 6, remover_acentos(f'- Data {dt_p}: {p["peso"]} kg'), 0, 1)
+        pdf.ln(5)
+        
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 8, remover_acentos('3. Historico Sanitario e Tratamentos Medicos'), 'B', 1, 'L')
+        pdf.ln(2)
+        
+        historico = ficha.get("historico_saude", [])
+        if not historico:
+            pdf.set_font('Arial', 'I', 10)
+            pdf.cell(0, 6, remover_acentos('Nenhum registro de saude encontrado para este animal.'), 0, 1)
+        else:
+            pdf.set_font('Arial', 'B', 9)
+            pdf.cell(25, 7, remover_acentos('Data'), 1, 0, 'C')
+            pdf.cell(40, 7, remover_acentos('Tipo'), 1, 0, 'C')
+            pdf.cell(75, 7, remover_acentos('Descricao'), 1, 0, 'C')
+            pdf.cell(50, 7, remover_acentos('Dose/Reforco'), 1, 1, 'C')
+            
+            pdf.set_font('Arial', '', 9)
+            for h in historico:
+                pdf.cell(25, 7, remover_acentos(h['data']), 1, 0, 'C')
+                pdf.cell(40, 7, remover_acentos(h['categoria']), 1, 0, 'C')
+                pdf.cell(75, 7, remover_acentos(h['descricao']), 1, 0, 'C')
+                detalhe_dose = h.get('dose_tipo', 'N/A')
+                if h.get('proxima_dose', '') and h['proxima_dose'] != 'Não possui':
+                    detalhe_dose += f" (Ref: {h['proxima_dose']})"
+                pdf.cell(50, 7, remover_acentos(detalhe_dose), 1, 1, 'C')
+                
+        return pdf.output(dest='S').encode('latin1')
 
 # ------------------------------------------------------------------------------------------
 # INJEÇÃO DE CSS - ESTILIZAÇÃO IDENTIDADE RECANTO
@@ -228,9 +357,6 @@ st.sidebar.markdown("⚡ *Conectado à nuvem estável Supabase*")
 
 menu = st.session_state.menu_atual
 
-st.markdown("<h1 style='text-align: center; color: #1D2B99;'>🏡 RECANTO ESTRELA DA MANHÃ</h1>", unsafe_allow_html=True)
-st.markdown("---")
-
 # ------------------------------------------------------------------------------------------
 # PAINEL GERAL (DASHBOARD)
 # ------------------------------------------------------------------------------------------
@@ -243,6 +369,21 @@ if menu == "Painel Geral (Dashboard)":
         st.button("⬅️ Voltar para a Lista de Animais", on_click=lambda: st.session_state.update({"visualizar_brinco": None}))
         st.header(f"🗂️ Ficha do Animal: {obter_nome_exibicao(id_sel, ficha)}")
         
+        # Botão para Gerar PDF da Ficha Individual
+        if FPDF_DISPONIVEL:
+            try:
+                pdf_bytes_ficha = gerar_pdf_ficha_individual(id_sel, ficha, dados_rebanho)
+                st.download_button(
+                    label="📥 Baixar Ficha Individual em PDF",
+                    data=pdf_bytes_ficha,
+                    file_name=f"ficha_{id_sel}.pdf",
+                    mime="application/pdf",
+                    key=f"download_ficha_{id_sel}"
+                )
+            except Exception as e:
+                st.error(f"Erro ao compilar PDF da Ficha: {e}")
+                
+        st.markdown("---")
         col_foto, col_infos = st.columns([1, 2])
         
         with col_foto:
@@ -268,6 +409,7 @@ if menu == "Painel Geral (Dashboard)":
             st.markdown(f"**Identificação:** {id_sel} | **Nome:** {ficha.get('nome', 'Não informado')}")
             st.markdown(f"**Raça:** {ficha['raca']} | **Sexo:** {ficha['sexo']}")
             st.markdown(f"**Idade:** {calcular_idade(ficha['data_nascimento'])} *({ficha['data_nascimento']})*")
+            st.markdown(f"**Forma de Entrada:** {ficha.get('origem', 'Não informada')}")
             
             status_v, desc_v = verificar_status_vacinal(ficha)
             status_c, desc_c = verificar_status_carencia(ficha)
@@ -282,17 +424,21 @@ if menu == "Painel Geral (Dashboard)":
             
             c_p1, c_p2 = st.columns(2)
             with c_p1:
+                st.markdown("**Pesos Históricos de Fase**")
                 peso_nasc = st.number_input("Peso ao Nascer (kg)", value=float(ficha.get("peso_nascer", 0.0)), step=0.1)
                 peso_desm = st.number_input("Peso ao Desmame (kg)", value=float(ficha.get("peso_desmame", 0.0)), step=0.1)
-                if st.button("💾 Atualizar Pesos Base"):
+                peso_ent_atualizar = st.number_input("Peso de Entrada no Recanto (kg)", value=float(ficha.get("peso_entrada", 0.0)), step=0.1)
+                
+                if st.button("💾 Atualizar Pesos de Fase"):
                     dados_rebanho[id_sel]["peso_nascer"] = peso_nasc
                     dados_rebanho[id_sel]["peso_desmame"] = peso_desm
+                    dados_rebanho[id_sel]["peso_entrada"] = peso_ent_atualizar
                     salvar_dados(dados_rebanho)
                     st.success("Pesos base atualizados!")
                     st.rerun()
             
             with c_p2:
-                st.markdown("**Registrar Nova Pesagem Rotineira**")
+                st.markdown("**Registrar Nova Pesagem Rotineira (Evolução)**")
                 data_peso = st.date_input("Data da Pesagem", datetime.today())
                 valor_peso = st.number_input("Peso Encontrado (kg)", min_value=0.0, step=0.5)
                 if st.button("⚖️ Gravar Novo Peso"):
@@ -308,18 +454,21 @@ if menu == "Painel Geral (Dashboard)":
             
             st.markdown("#### Evolução do Crescimento")
             lista_pesos = []
+            
             if float(ficha.get("peso_nascer", 0.0)) > 0:
-                lista_pesos.append({"Data": "Nascimento", "Peso (kg)": ficha["peso_nascer"]})
+                lista_pesos.append({"Fase/Data": "Nascimento", "Peso (kg)": ficha["peso_nascer"]})
             if float(ficha.get("peso_desmame", 0.0)) > 0:
-                lista_pesos.append({"Data": "Desmame", "Peso (kg)": ficha["peso_desmame"]})
+                lista_pesos.append({"Fase/Data": "Desmame", "Peso (kg)": ficha["peso_desmame"]})
+            if float(ficha.get("peso_entrada", 0.0)) > 0:
+                lista_pesos.append({"Fase/Data": "Entrada no Recanto", "Peso (kg)": ficha["peso_entrada"]})
                 
             for p in ficha.get("historico_pesos", []):
-                lista_pesos.append({"Data": datetime.strptime(p['data'], "%Y-%m-%d").strftime("%d/%m/%Y"), "Peso (kg)": p['peso']})
+                lista_pesos.append({"Fase/Data": datetime.strptime(p['data'], "%Y-%m-%d").strftime("%d/%m/%Y"), "Peso (kg)": p['peso']})
                 
             if lista_pesos:
                 st.table(pd.DataFrame(lista_pesos))
             else:
-                st.info("Nenhum peso registrado ainda.")
+                st.info("Nenhum registro de peso encontrado para este animal.")
 
         with aba_saude:
             st.subheader("Histórico de Intervenções Clínicas")
@@ -354,7 +503,24 @@ if menu == "Painel Geral (Dashboard)":
             ativos = {k: v for k, v in dados_rebanho.items() if v["status"] == "Ativo"}
             baixas = {k: v for k, v in dados_rebanho.items() if v["status"] != "Ativo"}
             
-            st.columns(3)[0].metric("Efetivo de Animais Ativos", len(ativos))
+            col_met, col_btn_pdf = st.columns([2, 1])
+            with col_met:
+                st.metric("Efetivo de Animais Ativos", len(ativos))
+            
+            with col_btn_pdf:
+                # Botão para Gerar PDF de Animais Ativos
+                if FPDF_DISPONIVEL and ativos:
+                    try:
+                        pdf_ativos_bytes = gerar_pdf_ativos(ativos)
+                        st.download_button(
+                            label="📥 Baixar Lista de Ativos (PDF)",
+                            data=pdf_ativos_bytes,
+                            file_name=f"lista_ativos_{datetime.today().strftime('%Y%m%d')}.pdf",
+                            mime="application/pdf",
+                            key="btn_pdf_ativos"
+                        )
+                    except Exception as e:
+                        st.error(f"Erro ao gerar PDF do lote: {e}")
             
             tab_ativos, tab_inativos = st.tabs(["🟢 Animais Ativos", "🔴 Inativos / Baixas"])
             
@@ -362,18 +528,19 @@ if menu == "Painel Geral (Dashboard)":
                 st.subheader("📋 Lista de Animais Ativos")
                 
                 if ativos:
-                    c_head = st.columns([1.5, 1.2, 1.2, 1.5, 1.2, 1.5, 1.5])
+                    # Tabela reestruturada com Peso Atual (Carência removida)
+                    c_head = st.columns([1.8, 1.2, 1.2, 1.5, 1.5, 1.8, 1.5])
                     c_head[0].markdown("**ID / Nome**")
                     c_head[1].markdown("**Raça**")
                     c_head[2].markdown("**Sexo**")
                     c_head[3].markdown("**Idade**")
                     c_head[4].markdown("**Manejo/Vacina**")
-                    c_head[5].markdown("**Carência Abate**")
+                    c_head[5].markdown("**⚖️ Peso Atual (Data)**")
                     c_head[6].markdown("**Ações**")
                     st.markdown("<hr style='margin: 4px 0;'>", unsafe_allow_html=True)
                     
                     for brinco, f_at in ativos.items():
-                        c_row = st.columns([1.5, 1.2, 1.2, 1.5, 1.2, 1.5, 1.5])
+                        c_row = st.columns([1.8, 1.2, 1.2, 1.5, 1.5, 1.8, 1.5])
                         c_row[0].write(obter_nome_exibicao(brinco, f_at))
                         c_row[1].write(f_at["raca"])
                         c_row[2].write(f_at["sexo"])
@@ -382,8 +549,8 @@ if menu == "Painel Geral (Dashboard)":
                         status_v, desc_v = verificar_status_vacinal(f_at)
                         c_row[4].markdown(f"{status_v if status_v else 'Em dia'}", help=desc_v)
                         
-                        status_c, desc_c = verificar_status_carencia(f_at)
-                        c_row[5].markdown(f"{status_c}", help=desc_c)
+                        # Nova Coluna: Peso Atual com a data
+                        c_row[5].write(obter_peso_atual(f_at))
                             
                         if c_row[6].button("🔎 Abrir Ficha", key=f"abrir_{brinco}"):
                             st.session_state.visualizar_brinco = brinco
@@ -428,11 +595,11 @@ elif menu == "Registrar Entrada (Cadastro)":
             
         raca = st.selectbox("Raça", ["Santa Inês", "Dorper", "Texel", "Suffolk", "Sem Raça Definida (SRD)"])
         sexo = st.radio("Sexo", ["Fêmea (Matriz/Borrega)", "Macho (Reprodutor/Borrego)"], horizontal=True)
-        data_nascimento = st.date_input("Data de Nascimento", datetime.today())
-        origem = st.selectbox("Forma de Entrada", ["Procriação (Nascimento)", "Compra", "Doação"])
+        data_nascimento = st.date_input("Data de Nascimento/Chegada", datetime.today())
+        origem = st.selectbox("Forma de Entrada", ["Compra", "Procriação (Nascimento)", "Doação"])
         
         st.markdown("#### ⚖️ Pesagem de Entrada")
-        peso_nasc_c = st.number_input("Peso ao Nascer (kg) - Deixe 0 se não souber", value=0.0, step=0.1)
+        peso_informado = st.number_input("Peso do Animal Atual/Entrada (kg) *", min_value=0.0, step=0.1)
         
         enviar = st.form_submit_button("Salvar Registro")
         
@@ -441,15 +608,21 @@ elif menu == "Registrar Entrada (Cadastro)":
                 st.error("Identificação obrigatória.")
             elif id_brinco in dados_rebanho:
                 st.error("Animal já cadastrado.")
+            elif peso_informado <= 0:
+                st.error("Por favor, informe o peso de entrada do animal.")
             else:
+                p_nasc = peso_informado if origem == "Procriação (Nascimento)" else 0.0
+                p_entrada = peso_informado if origem != "Procriação (Nascimento)" else 0.0
+                
                 dados_rebanho[id_brinco] = {
                     "nome": nome_animal.strip(),
                     "raca": raca,
                     "sexo": sexo,
                     "data_nascimento": str(data_nascimento),
                     "origem": origem,
-                    "peso_nascer": peso_nasc_c,
+                    "peso_nascer": p_nasc,
                     "peso_desmame": 0.0,
+                    "peso_entrada": p_entrada,
                     "historico_pesos": [],
                     "pai": "Não Informado",
                     "mae": "Não Informado",
