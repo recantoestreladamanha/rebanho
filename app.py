@@ -344,10 +344,9 @@ st.markdown("""
     <style>
     .stButton > button {
         width: 100% !important;
-        min-height: 42px !important;
+        min-height: 40px !important;
         border-radius: 6px !important;
         font-weight: 600 !important;
-        padding: 6px 10px !important;
     }
     button[kind="primary"] {
         background-color: #1D2B99 !important;
@@ -368,33 +367,6 @@ st.markdown("""
     div[data-testid="stMetricNumber"] {
         color: #FFA500 !important;
         font-weight: bold !important;
-    }
-    
-    /* LINHAS DA TABELA TRANSFORMADAS EM BOTÕES DE TOQUE LARGO PARA CELULAR */
-    .btn-linha-rebanho {
-        text-align: left !important;
-        background-color: #262936 !important;
-        color: #FFFFFF !important;
-        border: 1px solid #3F404C !important;
-        margin-bottom: 4px;
-        display: block;
-        width: 100%;
-        border-radius: 4px;
-    }
-    .btn-linha-rebanho:hover {
-        background-color: #2F3342 !important;
-        border-color: #FFA500 !important;
-    }
-    
-    /* Cabeçalhos simulados */
-    .header-fake {
-        background-color: #1A1C24;
-        color: #FFA500;
-        font-weight: 700;
-        padding: 10px;
-        border-radius: 4px 4px 0 0;
-        margin-bottom: 5px;
-        font-size: 14px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -455,7 +427,7 @@ if menu == "Painel Geral (Dashboard)":
         st.button("⬅️ Voltar para a Lista de Animais", on_click=lambda: st.session_state.update({"visualizar_brinco": None}))
         st.header(f"🗂️ Ficha do Animal: {obter_nome_exibicao(id_sel, ficha)}")
         
-        if FPDF_DISPONINVEL:
+        if FPDF_DISPONIVEL:
             try:
                 pdf_bytes_ficha = gerar_pdf_ficha_individual(id_sel, ficha, dados_rebanho)
                 st.download_button(
@@ -524,7 +496,7 @@ if menu == "Painel Geral (Dashboard)":
                     dados_rebanho[id_sel]["peso_desmame"] = peso_desm
                     dados_rebanho[id_sel]["peso_entrada"] = peso_ent_atualizar
                     salvar_dados(dados_rebanho)
-                    st.success("Pesos base updated!")
+                    st.success("Pesos base atualizados!")
                     st.rerun()
             
             with c_p2:
@@ -542,7 +514,7 @@ if menu == "Painel Geral (Dashboard)":
                     st.success("Nova pesagem registrada!")
                     st.rerun()
             
-            st.markdown("#### Evolução do Crescimento (Ordem Chronológica)")
+            st.markdown("#### Evolução do Crescimento (Ordem Cronológica)")
             lista_pesos_cronologica = montar_linha_tempo_pesos(ficha)
                 
             if lista_pesos_cronologica:
@@ -677,7 +649,7 @@ if menu == "Painel Geral (Dashboard)":
                             dados_rebanho[id_sel] = dados_atualizados_animal
                             
                         salvar_dados(dados_rebanho)
-                        st.success("Ficha cadastral updated com sucesso!")
+                        st.success("Ficha cadastral atualizada com sucesso na nuvem!")
                         st.rerun()
                 
     else:
@@ -707,62 +679,81 @@ if menu == "Painel Geral (Dashboard)":
             
             tab_ativos, tab_inativos = st.tabs(["🟢 Animais Ativos", "🔴 Inativos / Baixas"])
             
+            # MODIFICAÇÃO DE ALTO NÍVEL: TABELA PROFISSIONAL NATIVA E CLICÁVEL
             with tab_ativos:
-                st.subheader("📋 Lista de Animais Ativos (Toque em qualquer linha para abrir)")
+                st.subheader("📋 Lista de Animais Ativos (Clique na linha para abrir a Ficha)")
                 
                 if ativos:
-                    # Simulador de cabeçalho da tabela de alto contraste
-                    st.markdown('''
-                        <div class="header-fake">
-                            <table style="width:100%; border-collapse:collapse; color:#FFA500;">
-                                <tr>
-                                    <td style="width:50%; font-weight:bold; background:none !important; border:none; padding:0;">ID / Nome do Animal</td>
-                                    <td style="width:30%; font-weight:bold; background:none !important; border:none; padding:0;">Peso Atual</td>
-                                    <td style="width:20%; font-weight:bold; text-align:center; background:none !important; border:none; padding:0;">Status</td>
-                                </tr>
-                            </table>
-                        </div>
-                    ''', unsafe_allow_html=True)
+                    lista_ativos_df = []
+                    mapeamento_brincos_ativos = {}
                     
-                    # Cada animal vira um grande botão em formato de linha de tabela para toque fácil no celular
-                    for brinco, f_at in ativos.items():
+                    for idx, (brinco, f_at) in enumerate(ativos.items()):
                         status_v, _ = verificar_status_vacinal(f_at)
                         peso_limpo = obter_peso_atual(f_at).split(" (")[0]
-                        nome_comp = obter_nome_exibicao(brinco, f_at)
                         
-                        # Alinhamento sutil simulando colunas dentro do botão largo
-                        texto_linha = f"🏷️ {nome_comp:<30} | ⚖️ {peso_limpo:<15} | Saude: {status_v}"
+                        lista_ativos_df.append({
+                            "ID / Nome": obter_nome_exibicao(brinco, f_at),
+                            "Peso Atual": peso_limpo,
+                            "Situação": status_v
+                        })
+                        mapeamento_brincos_ativos[idx] = brinco
                         
-                        if st.button(texto_linha, key=f"linha_ativa_{brinco}"):
-                            st.session_state.visualizar_brinco = brinco
+                    df_ativos_tabela = pd.DataFrame(lista_ativos_df)
+                    
+                    # st.dataframe nativo com detecção de clique na linha (on_select="rerun")
+                    evento_selecao_ativo = st.dataframe(
+                        df_ativos_tabela, 
+                        use_container_width=True, 
+                        hide_index=True,
+                        selection_mode="single-row",
+                        on_select="rerun",
+                        key="tabela_ativos_interativa"
+                    )
+                    
+                    # Abre a ficha caso o usuário selecione a linha do animal
+                    if evento_selecao_ativo and evento_selecao_ativo.get("selection", {}).get("rows"):
+                        linha_selecionada = evento_selecao_ativo["selection"]["rows"][0]
+                        brinco_escolhido = mapeamento_brincos_ativos.get(linha_selecionada)
+                        if brinco_escolhido:
+                            st.session_state.visualizar_brinco = brinco_escolhido
                             st.rerun()
                 else:
                     st.warning("Nenhum animal ativo.")
 
             with tab_inativos:
-                st.subheader("🪵 Animais Fora do Lote (Baixas)")
+                st.subheader("🪵 Animais Fora do Lote (Baixas - Clique na linha para abrir)")
                 if baixas:
-                    st.markdown('''
-                        <div class="header-fake">
-                            <table style="width:100%; border-collapse:collapse; color:#FFA500;">
-                                <tr>
-                                    <td style="width:50%; font-weight:bold; background:none !important; border:none; padding:0;">ID / Nome do Animal</td>
-                                    <td style="width:50%; font-weight:bold; background:none !important; border:none; padding:0;">Motivo da Saída</td>
-                                </tr>
-                            </table>
-                        </div>
-                    ''', unsafe_allow_html=True)
+                    lista_baixas_df = []
+                    mapeamento_brincos_baixas = {}
                     
-                    for brinco, f_in in baixas.items():
+                    for idx, (brinco, f_in) in enumerate(baixas.items()):
                         motivo = f_in['status']
                         data_s = f_in.get('data_saida', '')
                         txt_motivo = f"{motivo} ({data_s})" if data_s else motivo
-                        nome_comp = obter_nome_exibicao(brinco, f_in)
                         
-                        texto_linha_in = f"❌ {nome_comp:<35} | Motivo: {txt_motivo}"
+                        lista_baixas_df.append({
+                            "ID / Nome": obter_nome_exibicao(brinco, f_in),
+                            "Motivo da Saída": txt_motivo,
+                            "Situação": "🔴"
+                        })
+                        mapeamento_brincos_baixas[idx] = brinco
                         
-                        if st.button(texto_linha_in, key=f"linha_baixa_{brinco}"):
-                            st.session_state.visualizar_brinco = brinco
+                    df_baixas_tabela = pd.DataFrame(lista_baixas_df)
+                    
+                    evento_selecao_baixa = st.dataframe(
+                        df_baixas_tabela, 
+                        use_container_width=True, 
+                        hide_index=True,
+                        selection_mode="single-row",
+                        on_select="rerun",
+                        key="tabela_baixas_interativa"
+                    )
+                    
+                    if evento_selecao_baixa and evento_selecao_baixa.get("selection", {}).get("rows"):
+                        linha_selecionada_in = evento_selecao_baixa["selection"]["rows"][0]
+                        brinco_escolhido_in = mapeamento_brincos_baixas.get(linha_selecionada_in)
+                        if brinco_escolhido_in:
+                            st.session_state.visualizar_brinco = brinco_escolhido_in
                             st.rerun()
                 else:
                     st.info("Nenhuma baixa registrada.")
