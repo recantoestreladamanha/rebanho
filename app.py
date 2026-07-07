@@ -188,10 +188,10 @@ def montar_linha_tempo_pesos(ficha):
     dt_nasc = ficha["data_nascimento"]
     
     if float(ficha.get("peso_nascer", 0.0)) > 0:
-        lista_pesos.append({"data_ordem": dt_nasc, "Fase/Data": f"Nascimento ({datetime.strptime(dt_nasc, '%Y-%m-%d').strftime('%d/%m/%Y')})", "Peso (kg)": float(ficha["peso_nascer"])})
+        lista_pesos.append({"data_ordem": dt_nasc, "Fase/Data": f"Nascimento ({datetime.strptime(dt_nasc, '%Y-%m-%d').strftime('%d/%m/%Y')})", "Peso (kg)": float(ficha["peso_nascer"]), "tipo": "base"})
         
     if float(ficha.get("peso_desmame", 0.0)) > 0:
-        lista_pesos.append({"data_ordem": dt_nasc, "Fase/Data": "Desmame", "Peso (kg)": float(ficha["peso_desmame"])})
+        lista_pesos.append({"data_ordem": dt_nasc, "Fase/Data": "Desmame", "Peso (kg)": float(ficha["peso_desmame"]), "tipo": "base"})
     
     if float(ficha.get("peso_entrada", 0.0)) > 0:
         origem_tipo = ficha.get("origem", "Entrada")
@@ -200,14 +200,14 @@ def montar_linha_tempo_pesos(ficha):
             rotulo_linha_tempo = f"{origem_tipo} ({dt_entrada_form})"
         except:
             rotulo_linha_tempo = f"{origem_tipo}"
-        lista_pesos.append({"data_ordem": dt_nasc, "Fase/Data": rotulo_linha_tempo, "Peso (kg)": float(ficha["peso_entrada"])})
+        lista_pesos.append({"data_ordem": dt_nasc, "Fase/Data": rotulo_linha_tempo, "Peso (kg)": float(ficha["peso_entrada"]), "tipo": "base"})
         
-    for p in ficha.get("historico_pesos", []):
+    for idx, p in enumerate(ficha.get("historico_pesos", [])):
         try:
             dt_p_form = datetime.strptime(p['data'], "%Y-%m-%d").date().strftime("%d/%m/%Y")
         except:
             dt_p_form = p['data']
-        lista_pesos.append({"data_ordem": p['data'], "Fase/Data": dt_p_form, "Peso (kg)": float(p['peso'])})
+        lista_pesos.append({"data_ordem": p['data'], "Fase/Data": dt_p_form, "Peso (kg)": float(p['peso']), "tipo": "rotineiro", "original_idx": idx})
         
     # Ordenação Cronológica Definitiva por Data de Ocorrência
     lista_pesos.sort(key=lambda x: x["data_ordem"])
@@ -509,18 +509,34 @@ if menu == "Painel Geral (Dashboard)":
             lista_pesos_cronologica = montar_linha_tempo_pesos(ficha)
                 
             if lista_pesos_cronologica:
-                # Tabela de visualização limpa
-                df_visualizacao = pd.DataFrame(lista_pesos_cronologica).drop(columns=["data_ordem"])
-                st.table(df_visualizacao)
+                # LISTAGEM DO HISTÓRICO COM BOTÃO DE REMOÇÃO LINHA POR LINHA
+                c_lbl1, c_lbl2, c_lbl3 = st.columns([3, 2, 1])
+                c_lbl1.markdown("**Fase / Data**")
+                c_lbl2.markdown("**Peso (kg)**")
+                c_lbl3.markdown("**Ação**")
+                st.markdown("<hr style='margin: 2px 0;'>", unsafe_allow_html=True)
                 
-                # CORREÇÃO DO GRÁFICO: Agora mapeado via datas verdadeiras para indexação correta
+                for item in lista_pesos_cronologica:
+                    c_r1, c_r2, c_r3 = st.columns([3, 2, 1])
+                    c_r1.write(item["Fase/Data"])
+                    c_r2.write(f"{item['Peso (kg)']:.1f} kg")
+                    
+                    if item["tipo"] == "rotineiro":
+                        # Se for uma pesagem rotineira criada por engano, libera o botão de apagar
+                        orig_idx = item["original_idx"]
+                        if c_r3.button("🗑️ Remover", key=f"del_peso_{orig_idx}"):
+                            dados_rebanho[id_sel]["historico_pesos"].pop(orig_idx)
+                            salvar_dados(dados_rebanho)
+                            st.success("Pesagem removida com sucesso!")
+                            st.rerun()
+                    else:
+                        c_r3.markdown("<span style='color: gray; font-size: 13px;'>Fixo (Cadastro)</span>", unsafe_allow_html=True)
+                
+                # Gráfico
                 st.markdown("#### 📈 Gráfico de Curva de Crescimento")
                 df_grafico = pd.DataFrame(lista_pesos_cronologica)
-                
-                # Converte o campo de texto temporário para tipo Datetime real do pandas
                 df_grafico['data_datetime'] = pd.to_datetime(df_grafico['data_ordem'])
                 df_grafico = df_grafico.sort_values('data_datetime')
-                
                 df_grafico = df_grafico.rename(columns={"data_datetime": "Data Real", "Peso (kg)": "Peso do Animal (kg)"})
                 st.line_chart(data=df_grafico, x="Data Real", y="Peso do Animal (kg)")
             else:
@@ -569,7 +585,7 @@ if menu == "Painel Geral (Dashboard)":
             if st.button("💾 Salvar Anotações"):
                 dados_rebanho[id_sel]["observacoes"] = nova_obs
                 salvar_dados(dados_rebanho)
-                st.success("Anotações salvas!")
+                st.success("Anotações saved!")
                 st.rerun()
                 
     else:
