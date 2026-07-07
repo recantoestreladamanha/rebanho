@@ -471,7 +471,7 @@ if menu == "Painel Geral (Dashboard)":
             st.markdown(f"**Manejo Preventivo:** {status_v if status_v else 'Em dia'} ({desc_v})")
             
         st.markdown("---")
-        aba_pesos, aba_saude, aba_crias, aba_notas = st.tabs(["⚖️ Histórico de Peso", "🏥 Histórico de Saúde", "🧬 Crias (Descendentes)", "📝 Notas de Campo"])
+        aba_pesos, aba_saude, aba_crias, aba_notas, aba_editar = st.tabs(["⚖️ Histórico de Peso", "🏥 Histórico de Saúde", "🧬 Crias (Descendentes)", "📝 Notas de Campo", "✏️ Editar Cadastro"])
         
         with aba_pesos:
             st.subheader("Acompanhamento Ponderal (Controle de Peso)")
@@ -487,7 +487,7 @@ if menu == "Painel Geral (Dashboard)":
                     dados_rebanho[id_sel]["peso_desmame"] = peso_desm
                     dados_rebanho[id_sel]["peso_entrada"] = peso_ent_atualizar
                     salvar_dados(dados_rebanho)
-                    st.success("Pesos base atualizados!")
+                    st.success("Pesos base updated!")
                     st.rerun()
             
             with c_p2:
@@ -509,7 +509,6 @@ if menu == "Painel Geral (Dashboard)":
             lista_pesos_cronologica = montar_linha_tempo_pesos(ficha)
                 
             if lista_pesos_cronologica:
-                # LISTAGEM DO HISTÓRICO COM BOTÃO DE REMOÇÃO LINHA POR LINHA
                 c_lbl1, c_lbl2, c_lbl3 = st.columns([3, 2, 1])
                 c_lbl1.markdown("**Fase / Data**")
                 c_lbl2.markdown("**Peso (kg)**")
@@ -522,17 +521,15 @@ if menu == "Painel Geral (Dashboard)":
                     c_r2.write(f"{item['Peso (kg)']:.1f} kg")
                     
                     if item["tipo"] == "rotineiro":
-                        # Se for uma pesagem rotineira criada por engano, libera o botão de apagar
                         orig_idx = item["original_idx"]
                         if c_r3.button("🗑️ Remover", key=f"del_peso_{orig_idx}"):
                             dados_rebanho[id_sel]["historico_pesos"].pop(orig_idx)
                             salvar_dados(dados_rebanho)
-                            st.success("Pesagem removida com sucesso!")
+                            st.success("Pesagem removida!")
                             st.rerun()
                     else:
                         c_r3.markdown("<span style='color: gray; font-size: 13px;'>Fixo (Cadastro)</span>", unsafe_allow_html=True)
                 
-                # Gráfico
                 st.markdown("#### 📈 Gráfico de Curva de Crescimento")
                 df_grafico = pd.DataFrame(lista_pesos_cronologica)
                 df_grafico['data_datetime'] = pd.to_datetime(df_grafico['data_ordem'])
@@ -540,7 +537,7 @@ if menu == "Painel Geral (Dashboard)":
                 df_grafico = df_grafico.rename(columns={"data_datetime": "Data Real", "Peso (kg)": "Peso do Animal (kg)"})
                 st.line_chart(data=df_grafico, x="Data Real", y="Peso do Animal (kg)")
             else:
-                st.info("Nenhum registro de peso encontrado para este animal.")
+                st.info("Nenhum registro de peso encontrado.")
 
         with aba_saude:
             st.subheader("Histórico de Intervenções Clínicas")
@@ -585,8 +582,32 @@ if menu == "Painel Geral (Dashboard)":
             if st.button("💾 Salvar Anotações"):
                 dados_rebanho[id_sel]["observacoes"] = nova_obs
                 salvar_dados(dados_rebanho)
-                st.success("Anotações saved!")
+                st.success("Anotações salvas!")
                 st.rerun()
+
+        with aba_editar:
+            st.subheader("✏️ Alterar Dados Cadastrais")
+            st.info("Utilize este formulário para corrigir dados digitados incorretamente no momento do cadastro inicial.")
+            
+            lista_racas = ["Santa Inês", "Dorper", "Texel", "Suffolk", "Sem Raça Definida (SRD)"]
+            idx_raca = lista_racas.index(ficha["raca"]) if ficha["raca"] in lista_racas else 4
+            
+            sexo_atual = normalizar_sexo(ficha["sexo"])
+            idx_sexo = 0 if sexo_atual == "Fêmea" else 1
+
+            with st.form(f"form_edicao_{id_sel}"):
+                edit_nome = st.text_input("Nome / Alcunha do Animal", value=ficha.get("nome", ""))
+                edit_raca = st.selectbox("Raça", lista_racas, index=idx_raca)
+                edit_sexo = st.radio("Sexo", ["Fêmea", "Macho"], index=idx_sexo, horizontal=True)
+                
+                if st.form_submit_button("💾 Salvar Alterações"):
+                    dados_rebanho[id_sel]["nome"] = edit_nome.strip()
+                    dados_rebanho[id_sel]["raca"] = edit_raca
+                    dados_rebanho[id_sel]["sexo"] = edit_sexo
+                    
+                    salvar_dados(dados_rebanho)
+                    st.success("Os dados do animal foram corrigidos e salvos na nuvem!")
+                    st.rerun()
                 
     else:
         if not dados_rebanho:
