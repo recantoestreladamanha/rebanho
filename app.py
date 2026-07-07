@@ -58,7 +58,7 @@ def salvar_dados(dados):
         st.error(f"Erro ao salvar dados na nuvem: {e}")
 
 # ------------------------------------------------------------------------------------------
-# FUNÇÕES UTILITÁRIAS E MANEJO SANITÁREA / PONDERAL
+# FUNÇÕES UTILITÁRIAS E MANEJO SANITÁRIA / PONDERAL
 # ------------------------------------------------------------------------------------------
 
 def remover_acentos(texto):
@@ -366,6 +366,14 @@ st.markdown("""
         color: #FFA500 !important;
         font-weight: bold !important;
     }
+    /* Melhora visual de cartões responsivos */
+    .animal-card {
+        background-color: #262730;
+        border: 1px solid #464855;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -509,26 +517,21 @@ if menu == "Painel Geral (Dashboard)":
             lista_pesos_cronologica = montar_linha_tempo_pesos(ficha)
                 
             if lista_pesos_cronologica:
-                c_lbl1, c_lbl2, c_lbl3 = st.columns([3, 2, 1])
-                c_lbl1.markdown("**Fase / Data**")
-                c_lbl2.markdown("**Peso (kg)**")
-                c_lbl3.markdown("**Ação**")
-                st.markdown("<hr style='margin: 2px 0;'>", unsafe_allow_html=True)
-                
+                # REAJUSTE RESPONSIVO DO CONTROLE DE DELEÇÃO LINHA POR LINHA (Perfeito para Mobile e Web)
                 for item in lista_pesos_cronologica:
-                    c_r1, c_r2, c_r3 = st.columns([3, 2, 1])
-                    c_r1.write(item["Fase/Data"])
-                    c_r2.write(f"{item['Peso (kg)']:.1f} kg")
-                    
-                    if item["tipo"] == "rotineiro":
-                        orig_idx = item["original_idx"]
-                        if c_r3.button("🗑️ Remover", key=f"del_peso_{orig_idx}"):
-                            dados_rebanho[id_sel]["historico_pesos"].pop(orig_idx)
-                            salvar_dados(dados_rebanho)
-                            st.success("Pesagem removida!")
-                            st.rerun()
-                    else:
-                        c_r3.markdown("<span style='color: gray; font-size: 13px;'>Fixo (Cadastro)</span>", unsafe_allow_html=True)
+                    with st.container():
+                        c_r1, c_r2 = st.columns([4, 2])
+                        c_r1.write(f"**{item['Fase/Data']}** ➔ {item['Peso (kg)']:.1f} kg")
+                        
+                        if item["tipo"] == "rotineiro":
+                            orig_idx = item["original_idx"]
+                            if c_r2.button("🗑️ Remover", key=f"del_peso_{orig_idx}"):
+                                dados_rebanho[id_sel]["historico_pesos"].pop(orig_idx)
+                                salvar_dados(dados_rebanho)
+                                st.success("Pesagem removida!")
+                                st.rerun()
+                        else:
+                            c_r2.markdown("<span style='color: gray; font-size: 12px;'>Fixo do Cadastro</span>", unsafe_allow_html=True)
                 
                 st.markdown("#### 📈 Gráfico de Curva de Crescimento")
                 df_grafico = pd.DataFrame(lista_pesos_cronologica)
@@ -554,7 +557,7 @@ if menu == "Painel Geral (Dashboard)":
                         "Dose": h.get('dose_tipo', 'N/A'),
                         "Liberação Carência": h.get('carencia', 'Não possui')
                     })
-                st.table(pd.DataFrame(exibir_lista))
+                st.dataframe(pd.DataFrame(exibir_lista), use_container_width=True)
                 
         with aba_crias:
             st.subheader("🧬 Genealogia - Crias Diretas Registradas")
@@ -572,7 +575,7 @@ if menu == "Painel Geral (Dashboard)":
                     })
                     
             if filhos_encontrados:
-                st.table(pd.DataFrame(filhos_encontrados))
+                st.dataframe(pd.DataFrame(filhos_encontrados), use_container_width=True)
             else:
                 st.info("Nenhuma cria direta registrada vinculada a este animal.")
                 
@@ -601,19 +604,11 @@ if menu == "Painel Geral (Dashboard)":
                 data_cadastrada_atual = date.today()
 
             with st.form(f"form_edicao_avancada_{id_sel}"):
-                col_b1, col_b2 = st.columns(2)
-                with col_b1:
-                    edit_brinco = st.text_input("Identificação (Brinco) *", value=id_sel)
-                with col_b2:
-                    edit_nome = st.text_input("Nome / Alcunha do Animal", value=ficha.get("nome", ""))
-                    
-                col_d1, col_d2 = st.columns(2)
-                with col_d1:
-                    rotulo_data_edit = "Data de Nascimento da Cria" if ficha.get("origem") == "Procriação (Nascimento)" else "Data de Chegada/Compra"
-                    edit_data = st.date_input(rotulo_data_edit, value=data_cadastrada_atual)
-                with col_d2:
-                    edit_raca = st.selectbox("Raça", lista_racas, index=idx_raca)
-                    
+                edit_brinco = st.text_input("Identificação (Brinco) *", value=id_sel)
+                edit_nome = st.text_input("Nome / Alcunha do Animal", value=ficha.get("nome", ""))
+                rotulo_data_edit = "Data de Nascimento da Cria" if ficha.get("origem") == "Procriação (Nascimento)" else "Data de Chegada/Compra"
+                edit_data = st.date_input(rotulo_data_edit, value=data_cadastrada_atual)
+                edit_raca = st.selectbox("Raça", lista_racas, index=idx_raca)
                 edit_sexo = st.radio("Sexo", ["Fêmea", "Macho"], index=idx_sexo, horizontal=True)
                 
                 if st.form_submit_button("💾 Salvar Alterações"):
@@ -624,7 +619,6 @@ if menu == "Painel Geral (Dashboard)":
                     elif novo_brinco_limpo != id_sel and novo_brinco_limpo in dados_rebanho:
                         st.error(f"Erro: O brinco {novo_brinco_limpo} já pertence a outro animal do rebanho.")
                     else:
-                        # Prepara os novos dados alterados
                         dados_atualizados_animal = ficha.copy()
                         dados_atualizados_animal["nome"] = edit_nome.strip()
                         dados_atualizados_animal["raca"] = edit_raca
@@ -632,7 +626,6 @@ if menu == "Painel Geral (Dashboard)":
                         dados_atualizados_animal["data_nascimento"] = str(edit_data)
                         
                         if novo_brinco_limpo != id_sel:
-                            # Migração de chave primária no dicionário
                             dados_rebanho[novo_brinco_limpo] = dados_atualizados_animal
                             del dados_rebanho[id_sel]
                             st.session_state.visualizar_brinco = novo_brinco_limpo
@@ -650,7 +643,7 @@ if menu == "Painel Geral (Dashboard)":
             ativos = {k: v for k, v in dados_rebanho.items() if v["status"] == "Ativo"}
             baixas = {k: v for k, v in dados_rebanho.items() if v["status"] != "Ativo"}
             
-            col_met, col_btn_pdf = st.columns([2, 1])
+            col_met, col_btn_pdf = st.columns([1, 1])
             with col_met:
                 st.metric("Efetivo de Animais Ativos", len(ativos))
             
@@ -659,7 +652,7 @@ if menu == "Painel Geral (Dashboard)":
                     try:
                         pdf_ativos_bytes = gerar_pdf_ativos(ativos)
                         st.download_button(
-                            label="📥 Baixar Lista de Ativos (PDF)",
+                            label="📥 Baixar Lista (PDF)",
                             data=pdf_ativos_bytes,
                             file_name=f"lista_ativos_{datetime.today().strftime('%Y%m%d')}.pdf",
                             mime="application/pdf",
@@ -674,52 +667,45 @@ if menu == "Painel Geral (Dashboard)":
                 st.subheader("📋 Lista de Animais Ativos")
                 
                 if ativos:
-                    c_head = st.columns([1.8, 1.2, 1.2, 1.5, 1.5, 1.8, 1.5])
-                    c_head[0].markdown("**ID / Nome**")
-                    c_head[1].markdown("**Raça**")
-                    c_head[2].markdown("**Sexo**")
-                    c_head[3].markdown("**Idade**")
-                    c_head[4].markdown("**Manejo/Vacina**")
-                    c_head[5].markdown("**⚖️ Peso Atual (Data)**")
-                    c_head[6].markdown("**Ações**")
-                    st.markdown("<hr style='margin: 4px 0;'>", unsafe_allow_html=True)
-                    
+                    # CORREÇÃO PARA MOBILE: Uso de Cartões Unificados em HTML/Markdown para evitar empilhamento desalinhado das colunas soltas
                     for brinco, f_at in ativos.items():
-                        c_row = st.columns([1.8, 1.2, 1.2, 1.5, 1.5, 1.8, 1.5])
-                        c_row[0].write(obter_nome_exibicao(brinco, f_at))
-                        c_row[1].write(f_at["raca"])
-                        c_row[2].write(normalizar_sexo(f_at["sexo"]))
-                        c_row[3].write(calcular_idade(f_at["data_nascimento"]))
-                        
                         status_v, desc_v = verificar_status_vacinal(f_at)
-                        c_row[4].markdown(f"{status_v if status_v else 'Em dia'}", help=desc_v)
-                        c_row[5].write(obter_peso_atual(f_at))
-                            
-                        if c_row[6].button("🔎 Abrir Ficha", key=f"abrir_{brinco}"):
+                        status_vacina_rotulo = status_v if status_v else "🟢 EM DIA"
+                        
+                        # Estrutura em container limpo individual por animal
+                        st.markdown(f"""
+                        <div class="animal-card">
+                            <strong>ID / Nome:</strong> {obter_nome_exibicao(brinco, f_at)}<br>
+                            <strong>Raça:</strong> {f_at['raca']} | <strong>Sexo:</strong> {normalizar_sexo(f_at['sexo'])}<br>
+                            <strong>Idade:</strong> {calcular_idade(f_at['data_nascimento'])}<br>
+                            <strong>Preventivo/Vacina:</strong> {status_vacina_rotulo} ({desc_v if desc_v else 'Sem pendências'})<br>
+                            <strong>Peso Atual:</strong> {obter_peso_atual(f_at)}
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Botão logo abaixo do cartão correspondente
+                        if st.button(f"🔎 Abrir Ficha ({brinco})", key=f"abrir_{brinco}"):
                             st.session_state.visualizar_brinco = brinco
                             st.rerun()
+                        st.markdown("---")
                 else:
                     st.warning("Nenhum animal ativo.")
 
             with tab_inativos:
                 st.subheader("🪵 Animais Fora do Lote")
                 if baixas:
-                    c_head_in = st.columns([2, 2, 1.5, 2.5, 2])
-                    c_head_in[0].markdown("**Identificação / Nome**")
-                    c_head_in[1].markdown("**Raça**")
-                    c_head_in[2].markdown("**Sexo**")
-                    c_head_in[3].markdown("**Motivo da Saída**")
-                    c_head_in[4].markdown("**Ações**")
-                    
                     for brinco, f_in in baixas.items():
-                        c_row_in = st.columns([2, 2, 1.5, 2.5, 2])
-                        c_row_in[0].write(obter_nome_exibicao(brinco, f_in))
-                        c_row_in[1].write(f_in["raca"])
-                        c_row_in[2].write(normalizar_sexo(f_in["sexo"]))
-                        c_row_in[3].write(f"{f_in['status']} ({f_in.get('data_saida', 'N/I')})")
-                        if c_row_in[4].button("🔎 Abrir Ficha", key=f"abrir_in_{brinco}"):
+                        st.markdown(f"""
+                        <div class="animal-card">
+                            <strong>ID / Nome:</strong> {obter_nome_exibicao(brinco, f_in)}<br>
+                            <strong>Raça:</strong> {f_in['raca']} | <strong>Sexo:</strong> {normalizar_sexo(f_in['sexo'])}<br>
+                            <strong>Motivo da Saída:</strong> {f_in['status']} ({f_in.get('data_saida', 'Não Informada')})
+                        </div>
+                        """, unsafe_allow_html=True)
+                        if st.button(f"🔎 Abrir Ficha ({brinco})", key=f"abrir_in_{brinco}"):
                             st.session_state.visualizar_brinco = brinco
                             st.rerun()
+                        st.markdown("---")
                 else:
                     st.info("Nenhuma baixa.")
 
@@ -733,12 +719,8 @@ elif menu == "Registrar Entrada (Cadastro)":
     st.markdown("---")
     
     with st.form("form_entrada", clear_on_submit=True):
-        col_id, col_nome = st.columns(2)
-        with col_id:
-            id_brinco = st.text_input("Identificação (Brinco) *")
-        with col_nome:
-            nome_animal = st.text_input("Nome / Alcunha (Opcional)")
-            
+        id_brinco = st.text_input("Identificação (Brinco) *")
+        nome_animal = st.text_input("Nome / Alcunha (Opcional)")
         raca = st.selectbox("Raça", ["Santa Inês", "Dorper", "Texel", "Suffolk", "Sem Raça Definida (SRD)"])
         sexo = st.radio("Sexo", ["Fêmea", "Macho"], horizontal=True)
         
@@ -746,7 +728,6 @@ elif menu == "Registrar Entrada (Cadastro)":
         data_nascimento = st.date_input(rotulo_data, datetime.today())
         
         st.markdown("#### 🧬 Controle Parental (Genealogia)")
-        
         opcoes_maes = {"": "Selecione a matriz..."}
         opcoes_pais = {"Não Informado": "Não Informado"}
         
