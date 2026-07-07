@@ -5,6 +5,7 @@ import os
 from datetime import datetime, date
 import unicodedata
 import base64
+import tempfile
 from supabase import create_client, Client
 
 # Configuração da página do Streamlit
@@ -42,7 +43,6 @@ def carregar_dados():
         if res.data:
             return json.loads(res.data[0]["conteudo"])
         else:
-            # CORREÇÃO AQUI: Ajustado de {"id", 1...} para {"id": 1...}
             supabase.table("rebanho_dados").insert({"id": 1, "conteudo": "{}"}).execute()
             return {}
     except Exception:
@@ -97,7 +97,9 @@ def obter_nome_exibicao(id_brinco, ficha_animal):
 def obter_peso_atual(ficha_animal):
     historico = ficha_animal.get("historico_pesos", [])
     if historico:
-        ultima = historico[-1]
+        # Garante pegar o último cronológico caso não esteja ordenado internamente
+        historico_ordenado = sorted(historico, key=lambda x: x["data"])
+        ultima = historico_ordenado[-1]
         try:
             dt_form = datetime.strptime(ultima["data"], "%Y-%m-%d").date().strftime("%d/%m/%Y")
         except:
@@ -181,6 +183,38 @@ def verificar_status_carencia(ficha_animal):
     nome_med, data_liberacao = carencias_ativas[0]
     return "⚠️ BLOQUEADO", f"Sob efeito de {nome_med}. Liberado apenas em {data_liberacao.strftime('%d/%m/%Y')}"
 
+def montar_linha_tempo_pesos(ficha):
+    """Gera uma lista estruturada e ordenada cronologicamente de todas as pesagens."""
+    lista_pesos = []
+    dt_nasc = ficha["data_nascimento"]
+    
+    if float(ficha.get("peso_nascer", 0.0)) > 0:
+        lista_pesos.append({"data_ordem": dt_nasc, "Fase/Data": f"Nascimento ({datetime.strptime(dt_nasc, '%Y-%m-%d').strftime('%d/%m/%Y')})", "Peso (kg)": float(ficha["peso_nascer"])})
+        
+    if float(ficha.get("peso_desmame", 0.0)) > 0:
+        # Como aproximação padrão, assume-se o desmame perto do fluxo, mas mantemos o rótulo descritivo
+        lista_pesos.append({"data_ordem": dt_nasc, "Fase/Data": "Desmame", "Peso (kg)": float(ficha["peso_desmame"])})
+    
+    if float(ficha.get("peso_entrada", 0.0)) > 0:
+        origem_tipo = ficha.get("origem", "Entrada")
+        try:
+            dt_entrada_form = datetime.strptime(dt_nasc, "%Y-%m-%d").date().strftime("%d/%m/%Y")
+            rotulo_linha_tempo = f"{origem_tipo} ({dt_entrada_form})"
+        except:
+            rotulo_linha_tempo = f"{origem_tipo}"
+        lista_pesos.append({"data_ordem": dt_nasc, "Fase/Data": rotulo_linha_tempo, "Peso (kg)": float(ficha["peso_entrada"])})
+        
+    for p in ficha.get("historico_pesos", []):
+        try:
+            dt_p_form = datetime.strptime(p['data'], "%Y-%m-%d").date().strftime("%d/%m/%Y")
+        except:
+            dt_p_form = p['data']
+        lista_pesos.append({"data_ordem": p['data'], "Fase/Data": dt_p_form, "Peso (kg)": float(p['peso'])})
+        
+    # Ordenação Cronológica Definitiva por Data de Ocorrência
+    lista_pesos.sort(key=lambda x: x["data_ordem"])
+    return lista_pesos
+
 # ------------------------------------------------------------------------------------------
 # CLASSES E GERADORES DE RELATÓRIO PDF
 # ------------------------------------------------------------------------------------------
@@ -232,6 +266,19 @@ if FPDF_DISPONIVEL:
         pdf.cell(0, 10, remover_acentos(f'FICHA INDIVIDUAL - ANIMAL: {obter_nome_exibicao(brinco, ficha)}'), 0, 1, 'L')
         pdf.ln(3)
         
+        # INSERÇÃO DA FOTO DO ANIMAL NO PDF SE EXISTIR
+        if "foto_base64" in ficha and ficha["foto_base64"]:
+            try:
+                foto_data = base64.b64decode(ficha["foto_base64"])
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_img:
+                    temp_img.write(foto_data)
+                    temp_img_path = temp_img.name
+                # Posiciona a imagem no canto superior direito do documento
+                pdf.image(temp_img_path, x=150, y=35, w=45, h=45)
+                os.unlink(temp_img_path)
+            except Exception:
+                pass
+        
         pdf.set_font('Arial', 'B', 11)
         pdf.cell(0, 8, remover_acentos('1. Informacoes Cadastrais'), 'B', 1, 'L')
         pdf.ln(2)
@@ -252,25 +299,16 @@ if FPDF_DISPONIVEL:
         pdf.ln(5)
         
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 8, remover_acentos('2. Historico de Pesagens'), 'B', 1, 'L')
+        pdf.cell(0, 8, remover_acentos('2. Historico de Pesagens (Ordem Cronologica)'), 'B', 1, 'L')
         pdf.ln(2)
+        
         pdf.set_font('Arial', '', 10)
-        if float(ficha.get("peso_nascer", 0.0)) > 0:
-            pdf.cell(0, 6, remover_acentos(f'- Peso ao Nascer: {ficha["peso_nascer"]} kg'), 0, 1)
-        if float(ficha.get("peso_desmame", 0.0)) > 0:
-            pdf.cell(0, 6, remover_acentos(f'- Peso ao Desmame: {ficha["peso_desmame"]} kg'), 0, 1)
-        if float(ficha.get("peso_entrada", 0.0)) > 0:
-            origem_nome = ficha.get("origem", "Entrada")
-            try:
-                dt_ent_form = datetime.strptime(ficha["data_nascimento"], "%Y-%m-%d").date().strftime("%d/%m/%Y")
-                label_ent = f"{origem_nome} ({dt_ent_form})"
-            except:
-                label_ent = origem_nome
-            pdf.cell(0, 6, remover_acentos(f'- Peso de {label_ent}: {ficha["peso_entrada"]} kg'), 0, 1)
-            
-        for p in ficha.get("historico_pesos", []):
-            dt_p = datetime.strptime(p['data'], "%Y-%m-%d").date().strftime("%d/%m/%Y")
-            pdf.cell(0, 6, remover_acentos(f'- Data {dt_p}: {p["peso"]} kg'), 0, 1)
+        pesos_cronologicos = montar_linha_tempo_pesos(ficha)
+        if not pesos_cronologicos:
+            pdf.cell(0, 6, remover_acentos('Nenhum registro de peso encontrado.'), 0, 1)
+        else:
+            for p in pesos_cronologicos:
+                pdf.cell(0, 6, remover_acentos(f"- {p['Fase/Data']}: {p['Peso (kg)']:.1f} kg"), 0, 1)
         pdf.ln(5)
         
         pdf.set_font('Arial', 'B', 11)
@@ -453,7 +491,7 @@ if menu == "Painel Geral (Dashboard)":
                     dados_rebanho[id_sel]["peso_desmame"] = peso_desm
                     dados_rebanho[id_sel]["peso_entrada"] = peso_ent_atualizar
                     salvar_dados(dados_rebanho)
-                    st.success("Pesos base atualizados!")
+                    st.success("Pesos base updated!")
                     st.rerun()
             
             with c_p2:
@@ -471,27 +509,19 @@ if menu == "Painel Geral (Dashboard)":
                     st.success("Nova pesagem registrada!")
                     st.rerun()
             
-            st.markdown("#### Evolução do Crescimento")
-            lista_pesos = []
-            if float(ficha.get("peso_nascer", 0.0)) > 0:
-                lista_pesos.append({"Fase/Data": "Nascimento", "Peso (kg)": ficha["peso_nascer"]})
-            if float(ficha.get("peso_desmame", 0.0)) > 0:
-                lista_pesos.append({"Fase/Data": "Desmame", "Peso (kg)": ficha["peso_desmame"]})
-            
-            if float(ficha.get("peso_entrada", 0.0)) > 0:
-                origem_tipo = ficha.get("origem", "Entrada")
-                try:
-                    dt_entrada_form = datetime.strptime(ficha["data_nascimento"], "%Y-%m-%d").date().strftime("%d/%m/%Y")
-                    rotulo_linha_tempo = f"{origem_tipo} ({dt_entrada_form})"
-                except:
-                    rotulo_linha_tempo = f"{origem_tipo}"
-                lista_pesos.append({"Fase/Data": rotulo_linha_tempo, "Peso (kg)": ficha["peso_entrada"]})
+            st.markdown("#### Evolução do Crescimento (Ordem Cronológica)")
+            lista_pesos_cronologica = montar_linha_tempo_pesos(ficha)
                 
-            for p in ficha.get("historico_pesos", []):
-                lista_pesos.append({"Fase/Data": datetime.strptime(p['data'], "%Y-%m-%d").date().strftime("%d/%m/%Y"), "Peso (kg)": p['peso']})
+            if lista_pesos_cronologica:
+                # Remove coluna interna de ordenação antes de plotar a tabela
+                df_visualizacao = pd.DataFrame(lista_pesos_cronologica).drop(columns=["data_ordem"])
+                st.table(df_visualizacao)
                 
-            if lista_pesos:
-                st.table(pd.DataFrame(lista_pesos))
+                # INSERÇÃO DO GRÁFICO DE GANHO DE PESO (STREAMLIT NATIVO)
+                st.markdown("#### 📈 Gráfico de Curva de Crescimento")
+                df_grafico = pd.DataFrame(lista_pesos_cronologica)
+                df_grafico = df_grafico.rename(columns={"Fase/Data": "Momento da Pesagem", "Peso (kg)": "Peso do Animal (kg)"})
+                st.line_chart(data=df_grafico, x="Momento da Pesagem", y="Peso do Animal (kg)")
             else:
                 st.info("Nenhum registro de peso encontrado para este animal.")
 
@@ -622,7 +652,7 @@ if menu == "Painel Geral (Dashboard)":
                     st.info("Nenhuma baixa.")
 
 # ------------------------------------------------------------------------------------------
-# REGISTRAR ENTRADA (CADASTRO) - COM RÓTULO DINÂMICO DE DATA BASEADO NA ORIGEM
+# REGISTRAR ENTRADA (CADASTRO)
 # ------------------------------------------------------------------------------------------
 elif menu == "Registrar Entrada (Cadastro)":
     st.header("➕ Registrar Entrada de Animal")
