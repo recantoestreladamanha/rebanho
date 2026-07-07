@@ -42,7 +42,8 @@ def carregar_dados():
         if res.data:
             return json.loads(res.data[0]["conteudo"])
         else:
-            supabase.table("rebanho_dados").insert({"id", 1, "conteudo": "{}"}).execute()
+            # CORREÇÃO AQUI: Ajustado de {"id", 1...} para {"id": 1...}
+            supabase.table("rebanho_dados").insert({"id": 1, "conteudo": "{}"}).execute()
             return {}
     except Exception:
         return {}
@@ -477,7 +478,6 @@ if menu == "Painel Geral (Dashboard)":
             if float(ficha.get("peso_desmame", 0.0)) > 0:
                 lista_pesos.append({"Fase/Data": "Desmame", "Peso (kg)": ficha["peso_desmame"]})
             
-            # Mudança crucial aqui: Se for compra/doação, traz o rótulo com a data exata formatada
             if float(ficha.get("peso_entrada", 0.0)) > 0:
                 origem_tipo = ficha.get("origem", "Entrada")
                 try:
