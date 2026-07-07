@@ -58,7 +58,7 @@ def salvar_dados(dados):
         st.error(f"Erro ao salvar dados na nuvem: {e}")
 
 # ------------------------------------------------------------------------------------------
-# FUNÇÕES UTILITÁRIAS E MANEJO SANITÁRIO / PONDERAL
+# FUNÇÕES UTILITÁRIAS E MANEJO SANITÁREA / PONDERAL
 # ------------------------------------------------------------------------------------------
 
 def remover_acentos(texto):
@@ -457,7 +457,7 @@ if menu == "Painel Geral (Dashboard)":
 
         with col_infos:
             st.subheader("📋 Informações Cadastrais")
-            st.markdown(f"**Identificação:** {id_sel} | **Nome:** {ficha.get('nome', 'Não informado')}")
+            st.markdown(f"**Identificação (Brinco):** {id_sel} | **Nome:** {ficha.get('nome', 'Não informado')}")
             st.markdown(f"**Raça:** {ficha['raca']} | **Sexo:** {normalizar_sexo(ficha['sexo'])}")
             st.markdown(f"**Idade:** {calcular_idade(ficha['data_nascimento'])} *({ficha['data_nascimento']})*")
             st.markdown(f"**Forma de Entrada:** {ficha.get('origem', 'Não informada')}")
@@ -487,7 +487,7 @@ if menu == "Painel Geral (Dashboard)":
                     dados_rebanho[id_sel]["peso_desmame"] = peso_desm
                     dados_rebanho[id_sel]["peso_entrada"] = peso_ent_atualizar
                     salvar_dados(dados_rebanho)
-                    st.success("Pesos base updated!")
+                    st.success("Pesos base atualizados!")
                     st.rerun()
             
             with c_p2:
@@ -586,28 +586,62 @@ if menu == "Painel Geral (Dashboard)":
                 st.rerun()
 
         with aba_editar:
-            st.subheader("✏️ Alterar Dados Cadastrais")
-            st.info("Utilize este formulário para corrigir dados digitados incorretamente no momento do cadastro inicial.")
+            st.subheader("✏️ Alterar Dados Cadastrais Completos")
+            st.warning("Atenção: Ao alterar o número do brinco, o sistema reestruturará automaticamente o histórico vinculando-o à nova numeração.")
             
             lista_racas = ["Santa Inês", "Dorper", "Texel", "Suffolk", "Sem Raça Definida (SRD)"]
             idx_raca = lista_racas.index(ficha["raca"]) if ficha["raca"] in lista_racas else 4
             
             sexo_atual = normalizar_sexo(ficha["sexo"])
             idx_sexo = 0 if sexo_atual == "Fêmea" else 1
+            
+            try:
+                data_cadastrada_atual = datetime.strptime(ficha["data_nascimento"], "%Y-%m-%d").date()
+            except:
+                data_cadastrada_atual = date.today()
 
-            with st.form(f"form_edicao_{id_sel}"):
-                edit_nome = st.text_input("Nome / Alcunha do Animal", value=ficha.get("nome", ""))
-                edit_raca = st.selectbox("Raça", lista_racas, index=idx_raca)
+            with st.form(f"form_edicao_avancada_{id_sel}"):
+                col_b1, col_b2 = st.columns(2)
+                with col_b1:
+                    edit_brinco = st.text_input("Identificação (Brinco) *", value=id_sel)
+                with col_b2:
+                    edit_nome = st.text_input("Nome / Alcunha do Animal", value=ficha.get("nome", ""))
+                    
+                col_d1, col_d2 = st.columns(2)
+                with col_d1:
+                    rotulo_data_edit = "Data de Nascimento da Cria" if ficha.get("origem") == "Procriação (Nascimento)" else "Data de Chegada/Compra"
+                    edit_data = st.date_input(rotulo_data_edit, value=data_cadastrada_atual)
+                with col_d2:
+                    edit_raca = st.selectbox("Raça", lista_racas, index=idx_raca)
+                    
                 edit_sexo = st.radio("Sexo", ["Fêmea", "Macho"], index=idx_sexo, horizontal=True)
                 
                 if st.form_submit_button("💾 Salvar Alterações"):
-                    dados_rebanho[id_sel]["nome"] = edit_nome.strip()
-                    dados_rebanho[id_sel]["raca"] = edit_raca
-                    dados_rebanho[id_sel]["sexo"] = edit_sexo
+                    novo_brinco_limpo = edit_brinco.strip()
                     
-                    salvar_dados(dados_rebanho)
-                    st.success("Os dados do animal foram corrigidos e salvos na nuvem!")
-                    st.rerun()
+                    if not novo_brinco_limpo:
+                        st.error("O brinco não pode ficar em branco.")
+                    elif novo_brinco_limpo != id_sel and novo_brinco_limpo in dados_rebanho:
+                        st.error(f"Erro: O brinco {novo_brinco_limpo} já pertence a outro animal do rebanho.")
+                    else:
+                        # Prepara os novos dados alterados
+                        dados_atualizados_animal = ficha.copy()
+                        dados_atualizados_animal["nome"] = edit_nome.strip()
+                        dados_atualizados_animal["raca"] = edit_raca
+                        dados_atualizados_animal["sexo"] = edit_sexo
+                        dados_atualizados_animal["data_nascimento"] = str(edit_data)
+                        
+                        if novo_brinco_limpo != id_sel:
+                            # Migração de chave primária no dicionário
+                            dados_rebanho[novo_brinco_limpo] = dados_atualizados_animal
+                            del dados_rebanho[id_sel]
+                            st.session_state.visualizar_brinco = novo_brinco_limpo
+                        else:
+                            dados_rebanho[id_sel] = dados_atualizados_animal
+                            
+                        salvar_dados(dados_rebanho)
+                        st.success("Ficha cadastral atualizada com sucesso na nuvem!")
+                        st.rerun()
                 
     else:
         if not dados_rebanho:
