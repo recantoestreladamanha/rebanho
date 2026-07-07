@@ -263,13 +263,29 @@ if FPDF_DISPONIVEL:
         pdf.cell(0, 10, remover_acentos(f'FICHA INDIVIDUAL - ANIMAL: {obter_nome_exibicao(brinco, ficha)}'), 0, 1, 'L')
         pdf.ln(3)
         
+        if ficha.get("status") != "Ativo":
+            pdf.set_font('Arial', 'B', 11)
+            pdf.set_text_color(180, 0, 0)
+            data_s_form = ""
+            if ficha.get("data_saida"):
+                try:
+                    data_s_form = datetime.strptime(ficha["data_saida"], "%Y-%m-%d").strftime("%d/%m/%Y")
+                except:
+                    data_s_form = ficha["data_saida"]
+            pdf.cell(0, 8, remover_acentos(f'SITUACAO: ANIMAL INATIVO ({ficha["status"].upper()}) - DATA DA SAIDA: {data_s_form}'), 0, 1, 'L')
+            if ficha.get("motivo_saida"):
+                pdf.set_font('Arial', 'I', 10)
+                pdf.cell(0, 6, remover_acentos(f'Obs da Saida: {ficha["motivo_saida"]}'), 0, 1, 'L')
+            pdf.set_text_color(0, 0, 0)
+            pdf.ln(3)
+        
         if "foto_base64" in ficha and ficha["foto_base64"]:
             try:
                 foto_data = base64.b64decode(ficha["foto_base64"])
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_img:
                     temp_img.write(foto_data)
                     temp_img_path = temp_img.name
-                pdf.image(temp_img_path, x=150, y=35, w=45, h=45)
+                pdf.image(temp_img_path, x=150, y=45, w=45, h=45)
                 os.unlink(temp_img_path)
             except Exception:
                 pass
@@ -357,9 +373,9 @@ st.markdown("""
         background-color: #121B66 !important;
     }
     button[kind="secondary"] {
-        background-color: #FFA500 !important;
+        background-color: #FFAA00 !important;
         color: white !important;
-        border: 1px solid #FFA500 !important;
+        border: 1px solid #FFAA00 !important;
     }
     button[kind="secondary"]:hover {
         background-color: #E69500 !important;
@@ -427,6 +443,17 @@ if menu == "Painel Geral (Dashboard)":
         st.button("⬅️ Voltar para a Lista de Animais", on_click=lambda: st.session_state.update({"visualizar_brinco": None}))
         st.header(f"🗂️ Ficha do Animal: {obter_nome_exibicao(id_sel, ficha)}")
         
+        if ficha.get("status") != "Ativo":
+            dt_s_form = ""
+            if ficha.get("data_saida"):
+                try:
+                    dt_s_form = datetime.strptime(ficha["data_saida"], "%Y-%m-%d").date().strftime("%d/%m/%Y")
+                except:
+                    dt_s_form = ficha["data_saida"]
+            
+            obs_saida_texto = f" | **Obs:** {ficha['motivo_saida']}" if ficha.get("motivo_saida") else ""
+            st.error(f"⚠️ **ANIMAL INATIVO NO REBANHO** — Motivo do desligamento: **{ficha['status'].upper()}** em **{dt_s_form}**{obs_saida_texto}")
+            
         if FPDF_DISPONIVEL:
             try:
                 pdf_bytes_ficha = gerar_pdf_ficha_individual(id_sel, ficha, dados_rebanho)
@@ -589,67 +616,95 @@ if menu == "Painel Geral (Dashboard)":
                 st.rerun()
 
         with aba_editar:
-            st.subheader("✏️ Alterar Dados Cadastrais Completos")
-            st.warning("Atenção: Ao alterar o número do brinco, o sistema reestruturará automaticamente o histórico vinculando-o à nova numeração.")
+            col_edicao, col_exclusao = st.columns([2, 1])
             
-            idx_raca = LISTA_RACAS.index(ficha["raca"]) if ficha["raca"] in LISTA_RACAS else 5
-            
-            grau_atual = ficha.get("grau_sangue", "Sem controle")
-            idx_grau = LISTA_GRAU_SANGUE.index(grau_atual) if grau_atual in LISTA_GRAU_SANGUE else 0
-            
-            sexo_atual = normalizar_sexo(ficha["sexo"])
-            idx_sexo = 0 if sexo_atual == "Fêmea" else 1
-            
-            try:
-                data_cadastrada_atual = datetime.strptime(ficha["data_nascimento"], "%Y-%m-%d").date()
-            except:
-                data_cadastrada_atual = date.today()
+            with col_edicao:
+                st.subheader("✏️ Alterar Dados Cadastrais")
+                st.warning("Ao alterar o número do brinco, o sistema reestruturará automaticamente o histórico vinculando-o à nova numeração.")
                 
-            try:
-                data_chegada_atual = datetime.strptime(ficha.get("data_chegada", ficha["data_nascimento"]), "%Y-%m-%d").date()
-            except:
-                data_chegada_atual = date.today()
+                idx_raca = LISTA_RACAS.index(ficha["raca"]) if ficha["raca"] in LISTA_RACAS else 5
+                grau_atual = ficha.get("grau_sangue", "Sem controle")
+                idx_grau = LISTA_GRAU_SANGUE.index(grau_atual) if grau_atual in LISTA_GRAU_SANGUE else 0
+                sexo_atual = normalizar_sexo(ficha["sexo"])
+                idx_sexo = 0 if sexo_atual == "Fêmea" else 1
+                
+                try:
+                    data_cadastrada_atual = datetime.strptime(ficha["data_nascimento"], "%Y-%m-%d").date()
+                except:
+                    data_cadastrada_atual = date.today()
+                    
+                try:
+                    data_chegada_atual = datetime.strptime(ficha.get("data_chegada", ficha["data_nascimento"]), "%Y-%m-%d").date()
+                except:
+                    data_chegada_atual = date.today()
 
-            with st.form(f"form_edicao_avancada_{id_sel}"):
-                edit_brinco = st.text_input("Identificação (Brinco) *", value=id_sel)
-                edit_nome = st.text_input("Nome / Alcunha do Animal", value=ficha.get("nome", ""))
-                edit_data = st.date_input("Data de Nascimento Real", value=data_cadastrada_atual)
-                
-                if ficha.get("origem") != "Procriação (Nascimento)":
-                    edit_data_chegada = st.date_input("Data de Chegada/Entrada na Propriedade", value=data_chegada_atual)
-                else:
-                    edit_data_chegada = None
+                with st.form(f"form_edicao_avancada_{id_sel}"):
+                    edit_brinco = st.text_input("Identificação (Brinco) *", value=id_sel)
+                    edit_nome = st.text_input("Nome / Alcunha do Animal", value=ficha.get("nome", ""))
+                    edit_data = st.date_input("Data de Nascimento Real", value=data_cadastrada_atual)
                     
-                edit_raca = st.selectbox("Raça", LISTA_RACAS, index=idx_raca)
-                edit_grau = st.selectbox("Grau de Sangue", LISTA_GRAU_SANGUE, index=idx_grau)
-                edit_sexo = st.radio("Sexo", ["Fêmea", "Macho"], index=idx_sexo, horizontal=True)
-                
-                if st.form_submit_button("💾 Salvar Alterações"):
-                    novo_brinco_limpo = edit_brinco.strip()
-                    
-                    if not novo_brinco_limpo:
-                        st.error("O brinco não pode ficar em branco.")
-                    elif novo_brinco_limpo != id_sel and novo_brinco_limpo in dados_rebanho:
-                        st.error(f"Erro: O brinco {novo_brinco_limpo} já pertence a outro animal do rebanho.")
+                    if ficha.get("origem") != "Procriação (Nascimento)":
+                        edit_data_chegada = st.date_input("Data de Chegada/Entrada na Propriedade", value=data_chegada_atual)
                     else:
-                        dados_atualizados_animal = ficha.copy()
-                        dados_atualizados_animal["nome"] = edit_nome.strip()
-                        dados_atualizados_animal["raca"] = edit_raca
-                        dados_atualizados_animal["grau_sangue"] = edit_grau
-                        dados_atualizados_animal["sexo"] = edit_sexo
-                        dados_atualizados_animal["data_nascimento"] = str(edit_data)
-                        if edit_data_chegada:
-                            dados_atualizados_animal["data_chegada"] = str(edit_data_chegada)
+                        edit_data_chegada = None
                         
-                        if novo_brinco_limpo != id_sel:
-                            dados_rebanho[novo_brinco_limpo] = dados_atualizados_animal
-                            del dados_rebanho[id_sel]
-                            st.session_state.visualizar_brinco = novo_brinco_limpo
+                    edit_raca = st.selectbox("Raça", LISTA_RACAS, index=idx_raca)
+                    edit_grau = st.selectbox("Grau de Sangue", LISTA_GRAU_SANGUE, index=idx_grau)
+                    edit_sexo = st.radio("Sexo", ["Fêmea", "Macho"], index=idx_sexo, horizontal=True)
+                    
+                    if st.form_submit_button("💾 Salvar Alterações"):
+                        novo_brinco_limpo = edit_brinco.strip()
+                        
+                        if not novo_brinco_limpo:
+                            st.error("O brinco não pode ficar em branco.")
+                        elif novo_brinco_limpo != id_sel and novo_brinco_limpo in dados_rebanho:
+                            st.error(f"Erro: O brinco {novo_brinco_limpo} já pertence a outro animal.")
                         else:
-                            dados_rebanho[id_sel] = dados_atualizados_animal
+                            dados_atualizados_animal = ficha.copy()
+                            dados_atualizados_animal["nome"] = edit_nome.strip()
+                            dados_atualizados_animal["raca"] = edit_raca
+                            dados_atualizados_animal["grau_sangue"] = edit_grau
+                            dados_atualizados_animal["sexo"] = edit_sexo
+                            dados_atualizados_animal["data_nascimento"] = str(edit_data)
+                            if edit_data_chegada:
+                                dados_atualizados_animal["data_chegada"] = str(edit_data_chegada)
                             
+                            if novo_brinco_limpo != id_sel:
+                                dados_rebanho[novo_brinco_limpo] = dados_atualizados_animal
+                                del dados_rebanho[id_sel]
+                                st.session_state.visualizar_brinco = novo_brinco_limpo
+                            else:
+                                dados_rebanho[id_sel] = dados_atualizados_animal
+                                
+                            salvar_dados(dados_rebanho)
+                            st.success("Ficha cadastral atualizada com sucesso na nuvem!")
+                            st.rerun()
+
+            with col_exclusao:
+                st.subheader("🗑️ Exclusão Permanente")
+                st.markdown("<p style='color: #FF4B4B; font-weight: bold;'>⚠️ ATENÇÃO: Esta ação não pode ser desfeita!</p>", unsafe_allow_html=True)
+                st.write("Ao deletar este animal permanentemente, ele será removido completamente da nuvem do Recanto.")
+                st.info("ℹ️ **Nota sobre Filiações:** Todas as crias/descendentes deste animal terão seus registros ajustados automaticamente e passarão a exibir Pai ou Mãe como **'Não Informado'** para evitar erros de banco de dados.")
+                
+                confirmar_check = st.checkbox("Estou ciente e desejo deletar este animal permanentemente", key=f"check_del_{id_sel}")
+                
+                if st.button("🚨 CONFIRMAR EXCLUSÃO DEFINITIVA", key=f"btn_del_def_{id_sel}"):
+                    if not confirmar_check:
+                        st.error("Você precisa marcar a caixa de seleção acima para confirmar que está ciente.")
+                    else:
+                        # Varre o rebanho para remover referências de pai/mãe
+                        for brinco_filho, dados_filho in dados_rebanho.items():
+                            if dados_filho.get("mae") == id_sel:
+                                dados_rebanho[brinco_filho]["mae"] = "Não Informado"
+                            if dados_filho.get("pai") == id_sel:
+                                dados_rebanho[brinco_filho]["pai"] = "Não Informado"
+                        
+                        # Deleta o animal principal
+                        del dados_rebanho[id_sel]
                         salvar_dados(dados_rebanho)
-                        st.success("Ficha cadastral atualizada com sucesso na nuvem!")
+                        
+                        st.session_state.visualizar_brinco = None
+                        st.success("Animal removido com sucesso e filiações atualizadas!")
                         st.rerun()
                 
     else:
@@ -679,7 +734,6 @@ if menu == "Painel Geral (Dashboard)":
             
             tab_ativos, tab_inativos = st.tabs(["🟢 Animais Ativos", "🔴 Inativos / Baixas"])
             
-            # MODIFICAÇÃO DE ALTO NÍVEL: TABELA PROFISSIONAL NATIVA E CLICÁVEL
             with tab_ativos:
                 st.subheader("📋 Lista de Animais Ativos (Clique na linha para abrir a Ficha)")
                 
@@ -700,7 +754,6 @@ if menu == "Painel Geral (Dashboard)":
                         
                     df_ativos_tabela = pd.DataFrame(lista_ativos_df)
                     
-                    # st.dataframe nativo com detecção de clique na linha (on_select="rerun")
                     evento_selecao_ativo = st.dataframe(
                         df_ativos_tabela, 
                         use_container_width=True, 
@@ -710,12 +763,11 @@ if menu == "Painel Geral (Dashboard)":
                         key="tabela_ativos_interativa"
                     )
                     
-                    # Abre a ficha caso o usuário selecione a linha do animal
                     if evento_selecao_ativo and evento_selecao_ativo.get("selection", {}).get("rows"):
                         linha_selecionada = evento_selecao_ativo["selection"]["rows"][0]
-                        brinco_escolhido = mapeamento_brincos_ativos.get(linha_selecionada)
-                        if brinco_escolhido:
-                            st.session_state.visualizar_brinco = brinco_escolhido
+                        brinco_chosen = mapeamento_brincos_ativos.get(linha_selecionada)
+                        if brinco_chosen:
+                            st.session_state.visualizar_brinco = brinco_chosen
                             st.rerun()
                 else:
                     st.warning("Nenhum animal ativo.")
@@ -751,9 +803,9 @@ if menu == "Painel Geral (Dashboard)":
                     
                     if evento_selecao_baixa and evento_selecao_baixa.get("selection", {}).get("rows"):
                         linha_selecionada_in = evento_selecao_baixa["selection"]["rows"][0]
-                        brinco_escolhido_in = mapeamento_brincos_baixas.get(linha_selecionada_in)
-                        if brinco_escolhido_in:
-                            st.session_state.visualizar_brinco = brinco_escolhido_in
+                        brinco_chosen_in = mapeamento_brincos_baixas.get(linha_selecionada_in)
+                        if brinco_chosen_in:
+                            st.session_state.visualizar_brinco = brinco_chosen_in
                             st.rerun()
                 else:
                     st.info("Nenhuma baixa registrada.")
@@ -850,7 +902,7 @@ elif menu == "Registrar Saída (Baixa)":
             animal_selecionado = st.selectbox("Selecione o Animal", list(options_baixa.keys()), format_func=lambda x: options_baixa[x])
             motivo_saida = st.selectbox("Motivo da Saída", ["Morte", "Venda", "Doação"])
             data_saida = st.date_input("Data da Saída", datetime.today())
-            detalhes_saida = st.text_area("Observações adicionais")
+            detalhes_saida = st.text_area("Observações adicionais (Causa da morte, comprador, etc.)")
             
             if st.form_submit_button("Registrar Saída"):
                 dados_rebanho[animal_selecionado]["status"] = motivo_saida
