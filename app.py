@@ -344,10 +344,10 @@ st.markdown("""
     <style>
     .stButton > button {
         width: 100% !important;
-        min-height: 38px !important;
+        min-height: 42px !important;
         border-radius: 6px !important;
         font-weight: 600 !important;
-        padding: 4px 8px !important;
+        padding: 6px 10px !important;
     }
     button[kind="primary"] {
         background-color: #1D2B99 !important;
@@ -370,30 +370,31 @@ st.markdown("""
         font-weight: bold !important;
     }
     
-    .custom-table {
+    /* LINHAS DA TABELA TRANSFORMADAS EM BOTÕES DE TOQUE LARGO PARA CELULAR */
+    .btn-linha-rebanho {
+        text-align: left !important;
+        background-color: #262936 !important;
+        color: #FFFFFF !important;
+        border: 1px solid #3F404C !important;
+        margin-bottom: 4px;
+        display: block;
         width: 100%;
-        border-collapse: collapse;
-        margin-bottom: 10px;
+        border-radius: 4px;
     }
-    .custom-table th {
+    .btn-linha-rebanho:hover {
+        background-color: #2F3342 !important;
+        border-color: #FFA500 !important;
+    }
+    
+    /* Cabeçalhos simulados */
+    .header-fake {
         background-color: #1A1C24;
-        color: #FFA500 !important;
-        text-align: left;
+        color: #FFA500;
+        font-weight: 700;
         padding: 10px;
-        font-weight: 600;
-        border-bottom: 2px solid #3F404C;
-    }
-    .custom-table td {
-        padding: 10px;
-        border-bottom: 1px solid #2E303D;
-        color: #EAEAEA;
-        vertical-align: middle;
-    }
-    .status-sign {
-        font-size: 18px;
-        text-align: center;
-        display: inline-block;
-        width: 100%;
+        border-radius: 4px 4px 0 0;
+        margin-bottom: 5px;
+        font-size: 14px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -413,12 +414,6 @@ if "menu_atual" not in st.session_state:
     st.session_state.menu_atual = "Painel Geral (Dashboard)"
 
 dados_rebanho = st.session_state.rebanho
-
-# Configuração de gatilho para abrir fichas através da tabela
-for k in dados_rebanho.keys():
-    if st.session_state.get(f"btn_ver_{k}"):
-        st.session_state.visualizar_brinco = k
-        st.session_state[f"btn_ver_{k}"] = False
 
 # ------------------------------------------------------------------------------------------
 # BARRA LATERAL
@@ -460,7 +455,7 @@ if menu == "Painel Geral (Dashboard)":
         st.button("⬅️ Voltar para a Lista de Animais", on_click=lambda: st.session_state.update({"visualizar_brinco": None}))
         st.header(f"🗂️ Ficha do Animal: {obter_nome_exibicao(id_sel, ficha)}")
         
-        if FPDF_DISPONIVEL:
+        if FPDF_DISPONINVEL:
             try:
                 pdf_bytes_ficha = gerar_pdf_ficha_individual(id_sel, ficha, dados_rebanho)
                 st.download_button(
@@ -529,7 +524,7 @@ if menu == "Painel Geral (Dashboard)":
                     dados_rebanho[id_sel]["peso_desmame"] = peso_desm
                     dados_rebanho[id_sel]["peso_entrada"] = peso_ent_atualizar
                     salvar_dados(dados_rebanho)
-                    st.success("Pesos base atualizados!")
+                    st.success("Pesos base updated!")
                     st.rerun()
             
             with c_p2:
@@ -547,7 +542,7 @@ if menu == "Painel Geral (Dashboard)":
                     st.success("Nova pesagem registrada!")
                     st.rerun()
             
-            st.markdown("#### Evolução do Crescimento (Ordem Cronológica)")
+            st.markdown("#### Evolução do Crescimento (Ordem Chronológica)")
             lista_pesos_cronologica = montar_linha_tempo_pesos(ficha)
                 
             if lista_pesos_cronologica:
@@ -682,7 +677,7 @@ if menu == "Painel Geral (Dashboard)":
                             dados_rebanho[id_sel] = dados_atualizados_animal
                             
                         salvar_dados(dados_rebanho)
-                        st.success("Ficha cadastral atualizada com sucesso na nuvem!")
+                        st.success("Ficha cadastral updated com sucesso!")
                         st.rerun()
                 
     else:
@@ -713,46 +708,62 @@ if menu == "Painel Geral (Dashboard)":
             tab_ativos, tab_inativos = st.tabs(["🟢 Animais Ativos", "🔴 Inativos / Baixas"])
             
             with tab_ativos:
-                st.subheader("📋 Lista de Animais Ativos")
+                st.subheader("📋 Lista de Animais Ativos (Toque em qualquer linha para abrir)")
                 
                 if ativos:
-                    col_tabela, col_botoes = st.columns([3, 1])
+                    # Simulador de cabeçalho da tabela de alto contraste
+                    st.markdown('''
+                        <div class="header-fake">
+                            <table style="width:100%; border-collapse:collapse; color:#FFA500;">
+                                <tr>
+                                    <td style="width:50%; font-weight:bold; background:none !important; border:none; padding:0;">ID / Nome do Animal</td>
+                                    <td style="width:30%; font-weight:bold; background:none !important; border:none; padding:0;">Peso Atual</td>
+                                    <td style="width:20%; font-weight:bold; text-align:center; background:none !important; border:none; padding:0;">Status</td>
+                                </tr>
+                            </table>
+                        </div>
+                    ''', unsafe_allow_html=True)
                     
-                    with col_tabela:
-                        html_table = '<table class="custom-table"><thead><tr><th>ID / Nome</th><th>Peso Atual</th><th style="text-align: center; width: 100px;">Situação</th></tr></thead><tbody>'
-                        for brinco, f_at in ativos.items():
-                            status_v, _ = verificar_status_vacinal(f_at)
-                            peso_limpo = obter_peso_atual(f_at).split(" (")[0]
-                            html_table += f'<tr><td><strong>{obter_nome_exibicao(brinco, f_at)}</strong></td><td>{peso_limpo}</td><td><span class="status-sign">{status_v}</span></td></tr>'
-                        html_table += '</tbody></table>'
-                        st.markdown(html_table, unsafe_allow_html=True)
+                    # Cada animal vira um grande botão em formato de linha de tabela para toque fácil no celular
+                    for brinco, f_at in ativos.items():
+                        status_v, _ = verificar_status_vacinal(f_at)
+                        peso_limpo = obter_peso_atual(f_at).split(" (")[0]
+                        nome_comp = obter_nome_exibicao(brinco, f_at)
                         
-                    with col_botoes:
-                        st.markdown("<p style='font-weight: 600; margin-bottom: 12px; color: #FFA500;'>Ações</p>", unsafe_allow_html=True)
-                        for brinco in ativos.keys():
-                            st.button(f"🔎 Abrir Ficha", key=f"btn_ver_{brinco}")
+                        # Alinhamento sutil simulando colunas dentro do botão largo
+                        texto_linha = f"🏷️ {nome_comp:<30} | ⚖️ {peso_limpo:<15} | Saude: {status_v}"
+                        
+                        if st.button(texto_linha, key=f"linha_ativa_{brinco}"):
+                            st.session_state.visualizar_brinco = brinco
+                            st.rerun()
                 else:
                     st.warning("Nenhum animal ativo.")
 
             with tab_inativos:
                 st.subheader("🪵 Animais Fora do Lote (Baixas)")
                 if baixas:
-                    col_tabela_in, col_botoes_in = st.columns([3, 1])
+                    st.markdown('''
+                        <div class="header-fake">
+                            <table style="width:100%; border-collapse:collapse; color:#FFA500;">
+                                <tr>
+                                    <td style="width:50%; font-weight:bold; background:none !important; border:none; padding:0;">ID / Nome do Animal</td>
+                                    <td style="width:50%; font-weight:bold; background:none !important; border:none; padding:0;">Motivo da Saída</td>
+                                </tr>
+                            </table>
+                        </div>
+                    ''', unsafe_allow_html=True)
                     
-                    with col_tabela_in:
-                        html_table_in = '<table class="custom-table"><thead><tr><th>ID / Nome</th><th>Motivo da Saída</th><th style="text-align: center; width: 100px;">Situação</th></tr></thead><tbody>'
-                        for brinco, f_in in baixas.items():
-                            motivo = f_in['status']
-                            data_s = f_in.get('data_saida', '')
-                            txt_motivo = f"{motivo} ({data_s})" if data_s else motivo
-                            html_table_in += f'<tr><td><strong>{obter_nome_exibicao(brinco, f_in)}</strong></td><td>{txt_motivo}</td><td><span class="status-sign">🔴</span></td></tr>'
-                        html_table_in += '</tbody></table>'
-                        st.markdown(html_table_in, unsafe_allow_html=True)
+                    for brinco, f_in in baixas.items():
+                        motivo = f_in['status']
+                        data_s = f_in.get('data_saida', '')
+                        txt_motivo = f"{motivo} ({data_s})" if data_s else motivo
+                        nome_comp = obter_nome_exibicao(brinco, f_in)
                         
-                    with col_botoes_in:
-                        st.markdown("<p style='font-weight: 600; margin-bottom: 12px; color: #FFA500;'>Ações</p>", unsafe_allow_html=True)
-                        for brinco in baixas.keys():
-                            st.button(f"🔎 Abrir Ficha", key=f"btn_ver_{brinco}")
+                        texto_linha_in = f"❌ {nome_comp:<35} | Motivo: {txt_motivo}"
+                        
+                        if st.button(texto_linha_in, key=f"linha_baixa_{brinco}"):
+                            st.session_state.visualizar_brinco = brinco
+                            st.rerun()
                 else:
                     st.info("Nenhuma baixa registrada.")
 
