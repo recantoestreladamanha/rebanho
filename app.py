@@ -86,13 +86,14 @@ def calcular_idade(data_nasc_str):
         return "Não informada"
 
 def obter_nome_exibicao(id_brinco, ficha_animal):
+    if not ficha_animal:
+        return id_brinco
     nome = ficha_animal.get("nome", "").strip()
     if nome:
         return f"{id_brinco} - {nome}"
     return id_brinco
 
 def obter_peso_atual(ficha_animal):
-    """Retorna o último peso registrado e a data formatada"""
     historico = ficha_animal.get("historico_pesos", [])
     if historico:
         ultima = historico[-1]
@@ -119,7 +120,6 @@ def obter_peso_atual(ficha_animal):
     return "Não pesado"
 
 def normalizar_sexo(sexo_str):
-    """Garante que na listagem apareça apenas Macho ou Fêmea"""
     if not sexo_str:
         return "Não informado"
     if "f" in sexo_str.lower() or "fê" in sexo_str.lower():
@@ -243,6 +243,11 @@ if FPDF_DISPONIVEL:
         pdf.cell(95, 6, remover_acentos(f'Nascimento: {ficha["data_nascimento"]}'), 0, 0)
         pdf.cell(95, 6, remover_acentos(f'Idade: {calcular_idade(ficha["data_nascimento"])}'), 0, 1)
         pdf.cell(95, 6, remover_acentos(f'Origem: {ficha.get("origem", "Nao informada")}'), 0, 1)
+        
+        pai_id = ficha.get("pai", "Não Informado")
+        mae_id = ficha.get("mae", "Não Informado")
+        pdf.cell(95, 6, remover_acentos(f'Pai: {obter_nome_exibicao(pai_id, todos_dados.get(pai_id, {}))}'), 0, 0)
+        pdf.cell(95, 6, remover_acentos(f'Mae: {obter_nome_exibicao(mae_id, todos_dados.get(mae_id, {}))}'), 0, 1)
         pdf.ln(5)
         
         pdf.set_font('Arial', 'B', 11)
@@ -359,7 +364,6 @@ if st.sidebar.button("🏥 Controle Sanitário/Médico", type="primary" if st.se
     st.session_state.menu_atual = "Controle Sanitário/Médico"; st.session_state.visualizar_brinco = None; st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("---")
 st.sidebar.markdown("⚡ *Conectado à nuvem estável Supabase*")
 
 menu = st.session_state.menu_atual
@@ -376,7 +380,6 @@ if menu == "Painel Geral (Dashboard)":
         st.button("⬅️ Voltar para a Lista de Animais", on_click=lambda: st.session_state.update({"visualizar_brinco": None}))
         st.header(f"🗂️ Ficha do Animal: {obter_nome_exibicao(id_sel, ficha)}")
         
-        # Botão para Gerar PDF da Ficha Individual
         if FPDF_DISPONIVEL:
             try:
                 pdf_bytes_ficha = gerar_pdf_ficha_individual(id_sel, ficha, dados_rebanho)
@@ -418,17 +421,21 @@ if menu == "Painel Geral (Dashboard)":
             st.markdown(f"**Idade:** {calcular_idade(ficha['data_nascimento'])} *({ficha['data_nascimento']})*")
             st.markdown(f"**Forma de Entrada:** {ficha.get('origem', 'Não informada')}")
             
+            # Exibição de Filiação (Controle Parental)
+            p_id = ficha.get("pai", "Não Informado")
+            m_id = ficha.get("mae", "Não Informado")
+            st.markdown(f"**Mãe (Matriz):** {obter_nome_exibicao(m_id, dados_rebanho.get(m_id, {}))}")
+            st.markdown(f"**Pai (Reprodutor):** {obter_nome_exibicao(p_id, dados_rebanho.get(p_id, {}))}")
+            
             status_v, desc_v = verificar_status_vacinal(ficha)
             status_c, desc_c = verificar_status_carencia(ficha)
             st.markdown(f"**Manejo Preventivo:** {status_v if status_v else 'Em dia'} ({desc_v})")
-            st.markdown(f"**Restrição de Carência:** {status_c} ({desc_c})")
             
         st.markdown("---")
-        aba_pesos, aba_saude, aba_notas = st.tabs(["⚖️ Histórico de Peso", "🏥 Histórico de Saúde", "📝 Notas de Campo"])
+        aba_pesos, aba_saude, aba_crias, aba_notas = st.tabs(["⚖️ Histórico de Peso", "🏥 Histórico de Saúde", "🧬 Crias (Descendentes)", "📝 Notas de Campo"])
         
         with aba_pesos:
             st.subheader("Acompanhamento Ponderal (Controle de Peso)")
-            
             c_p1, c_p2 = st.columns(2)
             with c_p1:
                 st.markdown("**Pesos Históricos de Fase**")
@@ -441,7 +448,7 @@ if menu == "Painel Geral (Dashboard)":
                     dados_rebanho[id_sel]["peso_desmame"] = peso_desm
                     dados_rebanho[id_sel]["peso_entrada"] = peso_ent_atualizar
                     salvar_dados(dados_rebanho)
-                    st.success("Pesos base updated!")
+                    st.success("Pesos base atualizados!")
                     st.rerun()
             
             with c_p2:
@@ -461,7 +468,6 @@ if menu == "Painel Geral (Dashboard)":
             
             st.markdown("#### Evolução do Crescimento")
             lista_pesos = []
-            
             if float(ficha.get("peso_nascer", 0.0)) > 0:
                 lista_pesos.append({"Fase/Data": "Nascimento", "Peso (kg)": ficha["peso_nascer"]})
             if float(ficha.get("peso_desmame", 0.0)) > 0:
@@ -494,6 +500,27 @@ if menu == "Painel Geral (Dashboard)":
                     })
                 st.table(pd.DataFrame(exibir_lista))
                 
+        with aba_crias:
+            st.subheader("🧬 Genealogia - Crias Diretas Registradas")
+            filhos_encontrados = []
+            
+            # Varre o rebanho para localizar animais onde este animal é pai ou mãe
+            for b_id, b_info in dados_rebanho.items():
+                if b_info.get("mae") == id_sel or b_info.get("pai") == id_sel:
+                    filhos_encontrados.append({
+                        "Identificação / Brinco": b_id,
+                        "Nome": b_info.get("nome", "Não informado"),
+                        "Raça": b_info["raca"],
+                        "Sexo": normalizar_sexo(b_info["sexo"]),
+                        "Idade Atual": calcular_idade(b_info["data_nascimento"]),
+                        "Situação": b_info["status"]
+                    })
+                    
+            if filhos_encontrados:
+                st.table(pd.DataFrame(filhos_encontrados))
+            else:
+                st.info("Nenhuma cria direta registrada vinculada a este animal.")
+                
         with aba_notas:
             st.subheader("Anotações Gerais")
             nova_obs = st.text_area("Observações importantes de campo:", value=ficha.get("observacoes", ""), height=150)
@@ -515,7 +542,6 @@ if menu == "Painel Geral (Dashboard)":
                 st.metric("Efetivo de Animais Ativos", len(ativos))
             
             with col_btn_pdf:
-                # Botão para Gerar PDF de Animais Ativos
                 if FPDF_DISPONIVEL and ativos:
                     try:
                         pdf_ativos_bytes = gerar_pdf_ativos(ativos)
@@ -535,7 +561,6 @@ if menu == "Painel Geral (Dashboard)":
                 st.subheader("📋 Lista de Animais Ativos")
                 
                 if ativos:
-                    # Tabela limpa com coluna "Sexo" mostrando estritamente apenas Macho/Fêmea
                     c_head = st.columns([1.8, 1.2, 1.2, 1.5, 1.5, 1.8, 1.5])
                     c_head[0].markdown("**ID / Nome**")
                     c_head[1].markdown("**Raça**")
@@ -555,7 +580,6 @@ if menu == "Painel Geral (Dashboard)":
                         
                         status_v, desc_v = verificar_status_vacinal(f_at)
                         c_row[4].markdown(f"{status_v if status_v else 'Em dia'}", help=desc_v)
-                        
                         c_row[5].write(obter_peso_atual(f_at))
                             
                         if c_row[6].button("🔎 Abrir Ficha", key=f"abrir_{brinco}"):
@@ -587,7 +611,7 @@ if menu == "Painel Geral (Dashboard)":
                     st.info("Nenhuma baixa.")
 
 # ------------------------------------------------------------------------------------------
-# REGISTRAR ENTRADA (CADASTRO)
+# REGISTRAR ENTRADA (CADASTRO) - COM CONTROLE PARENTAL CONDICIONAL INTELIGENTE
 # ------------------------------------------------------------------------------------------
 elif menu == "Registrar Entrada (Cadastro)":
     st.header("➕ Registrar Entrada de Animal")
@@ -604,6 +628,24 @@ elif menu == "Registrar Entrada (Cadastro)":
         data_nascimento = st.date_input("Data de Nascimento/Chegada", datetime.today())
         origem = st.selectbox("Forma de Entrada", ["Compra", "Procriação (Nascimento)", "Doação"])
         
+        # Lógica de Controle Parental Inteligente Baseada na Origem
+        st.markdown("#### 🧬 Controle Parental (Genealogia)")
+        
+        # Mapeia todas as possíveis matrizes (fêmeas) e reprodutores (machos) já cadastrados
+        opcoes_maes = {"": "Selecione a matriz..."}
+        opcoes_pais = {"Não Informado": "Não Informado"}
+        
+        for k, v in dados_rebanho.items():
+            sexo_normalizado = normalizar_sexo(v.get("sexo", ""))
+            if sexo_normalizado == "Fêmea":
+                opcoes_maes[k] = obter_nome_exibicao(k, v)
+            elif sexo_normalizado == "Macho":
+                opcoes_pais[k] = obter_nome_exibicao(k, v)
+        
+        # Exibe os seletores dinâmicos
+        mae_selecionada = st.selectbox("Mãe (Matriz) *Obrigatório para Procriação*", list(opcoes_maes.keys()), format_func=lambda x: opcoes_maes[x])
+        pai_selecionado = st.selectbox("Pai (Reprodutor)", list(opcoes_pais.keys()), format_func=lambda x: opcoes_pais[x])
+        
         st.markdown("#### ⚖️ Pesagem de Entrada")
         peso_informado = st.number_input("Peso do Animal Atual/Entrada (kg) *", min_value=0.0, step=0.1)
         
@@ -616,9 +658,15 @@ elif menu == "Registrar Entrada (Cadastro)":
                 st.error("Animal já cadastrado.")
             elif peso_informado <= 0:
                 st.error("Por favor, informe o peso de entrada do animal.")
+            elif origem == "Procriação (Nascimento)" and not mae_selecionada:
+                st.error("Para animais nascidos na propriedade (Procriação), a indicação da Mãe (Matriz) é obrigatória.")
             else:
                 p_nasc = peso_informado if origem == "Procriação (Nascimento)" else 0.0
                 p_entrada = peso_informado if origem != "Procriação (Nascimento)" else 0.0
+                
+                # Trata a genealogia baseado na origem real do animal
+                salvar_mae = mae_selecionada if origem == "Procriação (Nascimento)" else "Não Informado"
+                salvar_pai = pai_selecionado if origem == "Procriação (Nascimento)" else "Não Informado"
                 
                 dados_rebanho[id_brinco] = {
                     "nome": nome_animal.strip(),
@@ -630,15 +678,15 @@ elif menu == "Registrar Entrada (Cadastro)":
                     "peso_desmame": 0.0,
                     "peso_entrada": p_entrada,
                     "historico_pesos": [],
-                    "pai": "Não Informado",
-                    "mae": "Não Informado",
+                    "pai": salvar_pai,
+                    "mae": salvar_mae,
                     "status": "Ativo",
                     "foto_base64": "",
                     "observacoes": "",
                     "historico_saude": []
                 }
                 salvar_dados(dados_rebanho)
-                st.success("Cadastro realizado com sucesso!")
+                st.success("Cadastro e correlação familiar realizados com sucesso!")
                 st.rerun()
 
 elif menu == "Registrar Saída (Baixa)":
