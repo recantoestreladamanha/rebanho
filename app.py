@@ -42,7 +42,7 @@ def carregar_dados():
         if res.data:
             return json.loads(res.data[0]["conteudo"])
         else:
-            supabase.table("rebanho_dados").insert({"id": 1, "conteudo": "{}"}).execute()
+            supabase.table("rebanho_dados").insert({"id", 1, "conteudo": "{}"}).execute()
             return {}
     except Exception:
         return {}
@@ -259,7 +259,13 @@ if FPDF_DISPONIVEL:
         if float(ficha.get("peso_desmame", 0.0)) > 0:
             pdf.cell(0, 6, remover_acentos(f'- Peso ao Desmame: {ficha["peso_desmame"]} kg'), 0, 1)
         if float(ficha.get("peso_entrada", 0.0)) > 0:
-            pdf.cell(0, 6, remover_acentos(f'- Peso de Entrada: {ficha["peso_entrada"]} kg'), 0, 1)
+            origem_nome = ficha.get("origem", "Entrada")
+            try:
+                dt_ent_form = datetime.strptime(ficha["data_nascimento"], "%Y-%m-%d").date().strftime("%d/%m/%Y")
+                label_ent = f"{origem_nome} ({dt_ent_form})"
+            except:
+                label_ent = origem_nome
+            pdf.cell(0, 6, remover_acentos(f'- Peso de {label_ent}: {ficha["peso_entrada"]} kg'), 0, 1)
             
         for p in ficha.get("historico_pesos", []):
             dt_p = datetime.strptime(p['data'], "%Y-%m-%d").date().strftime("%d/%m/%Y")
@@ -470,8 +476,16 @@ if menu == "Painel Geral (Dashboard)":
                 lista_pesos.append({"Fase/Data": "Nascimento", "Peso (kg)": ficha["peso_nascer"]})
             if float(ficha.get("peso_desmame", 0.0)) > 0:
                 lista_pesos.append({"Fase/Data": "Desmame", "Peso (kg)": ficha["peso_desmame"]})
+            
+            # Mudança crucial aqui: Se for compra/doação, traz o rótulo com a data exata formatada
             if float(ficha.get("peso_entrada", 0.0)) > 0:
-                lista_pesos.append({"Fase/Data": "Entrada no Recanto", "Peso (kg)": ficha["peso_entrada"]})
+                origem_tipo = ficha.get("origem", "Entrada")
+                try:
+                    dt_entrada_form = datetime.strptime(ficha["data_nascimento"], "%Y-%m-%d").date().strftime("%d/%m/%Y")
+                    rotulo_linha_tempo = f"{origem_tipo} ({dt_entrada_form})"
+                except:
+                    rotulo_linha_tempo = f"{origem_tipo}"
+                lista_pesos.append({"Fase/Data": rotulo_linha_tempo, "Peso (kg)": ficha["peso_entrada"]})
                 
             for p in ficha.get("historico_pesos", []):
                 lista_pesos.append({"Fase/Data": datetime.strptime(p['data'], "%Y-%m-%d").date().strftime("%d/%m/%Y"), "Peso (kg)": p['peso']})
@@ -613,7 +627,6 @@ if menu == "Painel Geral (Dashboard)":
 elif menu == "Registrar Entrada (Cadastro)":
     st.header("➕ Registrar Entrada de Animal")
     
-    # Armazena temporariamente a escolha de origem fora do formulário para tornar a tela dinâmica em tempo real
     origem_temp = st.selectbox("Forma de Entrada / Origem", ["Compra", "Procriação (Nascimento)", "Doação"], key="origem_seletor_topo")
     st.markdown("---")
     
@@ -627,11 +640,9 @@ elif menu == "Registrar Entrada (Cadastro)":
         raca = st.selectbox("Raça", ["Santa Inês", "Dorper", "Texel", "Suffolk", "Sem Raça Definida (SRD)"])
         sexo = st.radio("Sexo", ["Fêmea", "Macho"], horizontal=True)
         
-        # Ajuste do Título da Data baseado na forma de entrada (Cria ou Compra)
         rotulo_data = "Data de Nascimento da Cria" if origem_temp == "Procriação (Nascimento)" else "Data de Chegada/Compra"
         data_nascimento = st.date_input(rotulo_data, datetime.today())
         
-        # Lógica de Controle Parental Inteligente
         st.markdown("#### 🧬 Controle Parental (Genealogia)")
         
         opcoes_maes = {"": "Selecione a matriz..."}
