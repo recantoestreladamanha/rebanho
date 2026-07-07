@@ -282,6 +282,7 @@ if FPDF_DISPONIVEL:
         pdf.cell(95, 6, remover_acentos(f'Identificacao: {brinco}'), 0, 0)
         pdf.cell(95, 6, remover_acentos(f'Nome: {ficha.get("nome", "Nao informado")}'), 0, 1)
         pdf.cell(95, 6, remover_acentos(f'Raca: {ficha["raca"]}'), 0, 0)
+        pdf.cell(95, 6, remover_acentos(f'Grau de Sangue: {ficha.get("grau_sangue", "Sem controle")}'), 0, 1)
         pdf.cell(95, 6, remover_acentos(f'Sexo: {normalizar_sexo(ficha["sexo"])}'), 0, 1)
         pdf.cell(95, 6, remover_acentos(f'Nascimento: {ficha["data_nascimento"]}'), 0, 0)
         pdf.cell(95, 6, remover_acentos(f'Idade: {calcular_idade(ficha["data_nascimento"])}'), 0, 1)
@@ -369,7 +370,6 @@ st.markdown("""
         font-weight: bold !important;
     }
     
-    /* Estilo para deixar a tabela compacta e limpa */
     .custom-table {
         width: 100%;
         border-collapse: collapse;
@@ -397,6 +397,10 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+# Listas globais fixas para Raças e Graus de Sangue
+LISTA_RACAS = ["Santa Inês", "Dorper", "Lacaune", "Texel", "Suffolk", "Sem Raça Definida (SRD)"]
+LISTA_GRAU_SANGUE = ["Sem controle", "PO", "1ª geração", "2ª geração", "3ª geração", "4ª geração", "5ª geração", "PC"]
 
 # Inicializar dados da nuvem
 if "rebanho" not in st.session_state:
@@ -487,13 +491,14 @@ if menu == "Painel Geral (Dashboard)":
                     encoded = base64.b64encode(nova_foto.read()).decode("utf-8")
                     dados_rebanho[id_sel]["foto_base64"] = encoded
                     salvar_dados(dados_rebanho)
-                    st.success("Foto保存 permanentemente!")
+                    st.success("Foto salva permanentemente!")
                     st.rerun()
 
         with col_infos:
             st.subheader("📋 Informações Cadastrais")
             st.markdown(f"**Identificação (Brinco):** {id_sel} | **Nome:** {ficha.get('nome', 'Não informado')}")
-            st.markdown(f"**Raça:** {ficha['raca']} | **Sexo:** {normalizar_sexo(ficha['sexo'])}")
+            st.markdown(f"**Raça:** {ficha['raca']} | **Grau de Sangue:** {ficha.get('grau_sangue', 'Sem controle')}")
+            st.markdown(f"**Sexo:** {normalizar_sexo(ficha['sexo'])}")
             st.markdown(f"**Idade (Tempo de Vida):** {calcular_idade(ficha['data_nascimento'])} *({ficha['data_nascimento']})*")
             st.markdown(f"**Forma de Entrada:** {ficha.get('origem', 'Não informada')}")
             if ficha.get("data_chegada"):
@@ -620,8 +625,10 @@ if menu == "Painel Geral (Dashboard)":
             st.subheader("✏️ Alterar Dados Cadastrais Completos")
             st.warning("Atenção: Ao alterar o número do brinco, o sistema reestruturará automaticamente o histórico vinculando-o à nova numeração.")
             
-            lista_racas = ["Santa Inês", "Dorper", "Texel", "Suffolk", "Sem Raça Definida (SRD)"]
-            idx_raca = lista_racas.index(ficha["raca"]) if ficha["raca"] in lista_racas else 4
+            idx_raca = LISTA_RACAS.index(ficha["raca"]) if ficha["raca"] in LISTA_RACAS else 5
+            
+            grau_atual = ficha.get("grau_sangue", "Sem controle")
+            idx_grau = LISTA_GRAU_SANGUE.index(grau_atual) if grau_atual in LISTA_GRAU_SANGUE else 0
             
             sexo_atual = normalizar_sexo(ficha["sexo"])
             idx_sexo = 0 if sexo_atual == "Fêmea" else 1
@@ -646,7 +653,8 @@ if menu == "Painel Geral (Dashboard)":
                 else:
                     edit_data_chegada = None
                     
-                edit_raca = st.selectbox("Raça", lista_racas, index=idx_raca)
+                edit_raca = st.selectbox("Raça", LISTA_RACAS, index=idx_raca)
+                edit_grau = st.selectbox("Grau de Sangue", LISTA_GRAU_SANGUE, index=idx_grau)
                 edit_sexo = st.radio("Sexo", ["Fêmea", "Macho"], index=idx_sexo, horizontal=True)
                 
                 if st.form_submit_button("💾 Salvar Alterações"):
@@ -660,6 +668,7 @@ if menu == "Painel Geral (Dashboard)":
                         dados_atualizados_animal = ficha.copy()
                         dados_atualizados_animal["nome"] = edit_nome.strip()
                         dados_atualizados_animal["raca"] = edit_raca
+                        dados_atualizados_animal["grau_sangue"] = edit_grau
                         dados_atualizados_animal["sexo"] = edit_sexo
                         dados_atualizados_animal["data_nascimento"] = str(edit_data)
                         if edit_data_chegada:
@@ -692,7 +701,7 @@ if menu == "Painel Geral (Dashboard)":
                     try:
                         pdf_ativos_bytes = gerar_pdf_ativos(ativos)
                         st.download_button(
-                            label="📥 Baixar Lista Completa (PDF)",
+                            label="📥 Baixar Lista (PDF)",
                             data=pdf_ativos_bytes,
                             file_name=f"lista_ativos_{datetime.today().strftime('%Y%m%d')}.pdf",
                             mime="application/pdf",
@@ -703,7 +712,6 @@ if menu == "Painel Geral (Dashboard)":
             
             tab_ativos, tab_inativos = st.tabs(["🟢 Animais Ativos", "🔴 Inativos / Baixas"])
             
-            # MODIFICAÇÃO SOLICITADA: TABELA SIMPLIFICADA E CLEAN
             with tab_ativos:
                 st.subheader("📋 Lista de Animais Ativos")
                 
@@ -711,28 +719,12 @@ if menu == "Painel Geral (Dashboard)":
                     col_tabela, col_botoes = st.columns([3, 1])
                     
                     with col_tabela:
-                        html_table = """
-                        <table class="custom-table">
-                            <thead>
-                                <tr>
-                                    <th>ID / Nome</th>
-                                    <th>Peso Atual</th>
-                                    <th style="text-align: center; width: 100px;">Situação</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                        """
+                        html_table = '<table class="custom-table"><thead><tr><th>ID / Nome</th><th>Peso Atual</th><th style="text-align: center; width: 100px;">Situação</th></tr></thead><tbody>'
                         for brinco, f_at in ativos.items():
                             status_v, _ = verificar_status_vacinal(f_at)
                             peso_limpo = obter_peso_atual(f_at).split(" (")[0]
-                            html_table += f"""
-                                <tr>
-                                    <td><strong>{obter_nome_exibicao(brinco, f_at)}</strong></td>
-                                    <td>{peso_limpo}</td>
-                                    <td><span class="status-sign">{status_v}</span></td>
-                                </tr>
-                            """
-                        html_table += "</tbody></table>"
+                            html_table += f'<tr><td><strong>{obter_nome_exibicao(brinco, f_at)}</strong></td><td>{peso_limpo}</td><td><span class="status-sign">{status_v}</span></td></tr>'
+                        html_table += '</tbody></table>'
                         st.markdown(html_table, unsafe_allow_html=True)
                         
                     with col_botoes:
@@ -748,29 +740,13 @@ if menu == "Painel Geral (Dashboard)":
                     col_tabela_in, col_botoes_in = st.columns([3, 1])
                     
                     with col_tabela_in:
-                        html_table_in = """
-                        <table class="custom-table">
-                            <thead>
-                                <tr>
-                                    <th>ID / Nome</th>
-                                    <th>Motivo da Saída</th>
-                                    <th style="text-align: center; width: 100px;">Situação</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                        """
+                        html_table_in = '<table class="custom-table"><thead><tr><th>ID / Nome</th><th>Motivo da Saída</th><th style="text-align: center; width: 100px;">Situação</th></tr></thead><tbody>'
                         for brinco, f_in in baixas.items():
                             motivo = f_in['status']
                             data_s = f_in.get('data_saida', '')
                             txt_motivo = f"{motivo} ({data_s})" if data_s else motivo
-                            html_table_in += f"""
-                                <tr>
-                                    <td><strong>{obter_nome_exibicao(brinco, f_in)}</strong></td>
-                                    <td>{txt_motivo}</td>
-                                    <td><span class="status-sign">🔴</span></td>
-                                </tr>
-                            """
-                        html_table_in += "</tbody></table>"
+                            html_table_in += f'<tr><td><strong>{obter_nome_exibicao(brinco, f_in)}</strong></td><td>{txt_motivo}</td><td><span class="status-sign">🔴</span></td></tr>'
+                        html_table_in += '</tbody></table>'
                         st.markdown(html_table_in, unsafe_allow_html=True)
                         
                     with col_botoes_in:
@@ -792,12 +768,13 @@ elif menu == "Registrar Entrada (Cadastro)":
     with st.form("form_entrada", clear_on_submit=True):
         id_brinco = st.text_input("Identificação (Brinco) *")
         nome_animal = st.text_input("Nome / Alcunha (Opcional)")
-        raca = st.selectbox("Raça", ["Santa Inês", "Dorper", "Texel", "Suffolk", "Sem Raça Definida (SRD)"])
+        raca = st.selectbox("Raça", LISTA_RACAS)
+        grau_sangue = st.selectbox("Grau de Sangue *", LISTA_GRAU_SANGUE)
         sexo = st.radio("Sexo", ["Fêmea", "Macho"], horizontal=True)
         
         data_nascimento = st.date_input("Data de Nascimento Real (Estimada ou Exata) *", datetime.today())
         
-        if origen_temp != "Procriação (Nascimento)":
+        if origem_temp != "Procriação (Nascimento)":
             data_chegada = st.date_input("Data de Chegada / Entrada na Propriedade", datetime.today())
         else:
             data_chegada = None
@@ -840,6 +817,7 @@ elif menu == "Registrar Entrada (Cadastro)":
                 dados_rebanho[id_brinco] = {
                     "nome": nome_animal.strip(),
                     "raca": raca,
+                    "grau_sangue": grau_sangue,
                     "sexo": sexo,
                     "data_nascimento": str(data_nascimento),
                     "data_chegada": str(data_chegada) if data_chegada else str(data_nascimento),
