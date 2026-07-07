@@ -97,7 +97,6 @@ def obter_nome_exibicao(id_brinco, ficha_animal):
 def obter_peso_atual(ficha_animal):
     historico = ficha_animal.get("historico_pesos", [])
     if historico:
-        # Garante pegar o último cronológico caso não esteja ordenado internamente
         historico_ordenado = sorted(historico, key=lambda x: x["data"])
         ultima = historico_ordenado[-1]
         try:
@@ -192,7 +191,6 @@ def montar_linha_tempo_pesos(ficha):
         lista_pesos.append({"data_ordem": dt_nasc, "Fase/Data": f"Nascimento ({datetime.strptime(dt_nasc, '%Y-%m-%d').strftime('%d/%m/%Y')})", "Peso (kg)": float(ficha["peso_nascer"])})
         
     if float(ficha.get("peso_desmame", 0.0)) > 0:
-        # Como aproximação padrão, assume-se o desmame perto do fluxo, mas mantemos o rótulo descritivo
         lista_pesos.append({"data_ordem": dt_nasc, "Fase/Data": "Desmame", "Peso (kg)": float(ficha["peso_desmame"])})
     
     if float(ficha.get("peso_entrada", 0.0)) > 0:
@@ -266,14 +264,12 @@ if FPDF_DISPONIVEL:
         pdf.cell(0, 10, remover_acentos(f'FICHA INDIVIDUAL - ANIMAL: {obter_nome_exibicao(brinco, ficha)}'), 0, 1, 'L')
         pdf.ln(3)
         
-        # INSERÇÃO DA FOTO DO ANIMAL NO PDF SE EXISTIR
         if "foto_base64" in ficha and ficha["foto_base64"]:
             try:
                 foto_data = base64.b64decode(ficha["foto_base64"])
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_img:
                     temp_img.write(foto_data)
                     temp_img_path = temp_img.name
-                # Posiciona a imagem no canto superior direito do documento
                 pdf.image(temp_img_path, x=150, y=35, w=45, h=45)
                 os.unlink(temp_img_path)
             except Exception:
@@ -491,7 +487,7 @@ if menu == "Painel Geral (Dashboard)":
                     dados_rebanho[id_sel]["peso_desmame"] = peso_desm
                     dados_rebanho[id_sel]["peso_entrada"] = peso_ent_atualizar
                     salvar_dados(dados_rebanho)
-                    st.success("Pesos base updated!")
+                    st.success("Pesos base atualizados!")
                     st.rerun()
             
             with c_p2:
@@ -513,15 +509,20 @@ if menu == "Painel Geral (Dashboard)":
             lista_pesos_cronologica = montar_linha_tempo_pesos(ficha)
                 
             if lista_pesos_cronologica:
-                # Remove coluna interna de ordenação antes de plotar a tabela
+                # Tabela de visualização limpa
                 df_visualizacao = pd.DataFrame(lista_pesos_cronologica).drop(columns=["data_ordem"])
                 st.table(df_visualizacao)
                 
-                # INSERÇÃO DO GRÁFICO DE GANHO DE PESO (STREAMLIT NATIVO)
+                # CORREÇÃO DO GRÁFICO: Agora mapeado via datas verdadeiras para indexação correta
                 st.markdown("#### 📈 Gráfico de Curva de Crescimento")
                 df_grafico = pd.DataFrame(lista_pesos_cronologica)
-                df_grafico = df_grafico.rename(columns={"Fase/Data": "Momento da Pesagem", "Peso (kg)": "Peso do Animal (kg)"})
-                st.line_chart(data=df_grafico, x="Momento da Pesagem", y="Peso do Animal (kg)")
+                
+                # Converte o campo de texto temporário para tipo Datetime real do pandas
+                df_grafico['data_datetime'] = pd.to_datetime(df_grafico['data_ordem'])
+                df_grafico = df_grafico.sort_values('data_datetime')
+                
+                df_grafico = df_grafico.rename(columns={"data_datetime": "Data Real", "Peso (kg)": "Peso do Animal (kg)"})
+                st.line_chart(data=df_grafico, x="Data Real", y="Peso do Animal (kg)")
             else:
                 st.info("Nenhum registro de peso encontrado para este animal.")
 
