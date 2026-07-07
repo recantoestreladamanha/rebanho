@@ -58,7 +58,7 @@ def salvar_dados(dados):
         st.error(f"Erro ao salvar dados na nuvem: {e}")
 
 # ------------------------------------------------------------------------------------------
-# FUNÇÕES UTILITÁRIAS E MANEJO SANITÁRIA / PONDERAL
+# FUNÇÕES UTILITÁRIAS E MANEJO SANITÁRIO / PONDERAL
 # ------------------------------------------------------------------------------------------
 
 def remover_acentos(texto):
@@ -135,7 +135,7 @@ def verificar_status_vacinal(ficha_animal):
     
     for h in historico:
         if h.get("dose_tipo", "") == "Uso Contínuo":
-            return "🩺 CONTÍNUO", f"Tratamento contínuo: {h.get('descricao', '')}"
+            return "🩺", f"Tratamento contínuo: {h.get('descricao', '')}"
             
     for h in historico:
         prox_dose_str = h.get("proxima_dose", "")
@@ -147,18 +147,18 @@ def verificar_status_vacinal(ficha_animal):
                 pass
                 
     if not vacinas_pendentes:
-        return "", ""
+        return "🟢", "Em dia"
         
     vacinas_pendentes.sort(key=lambda x: x[1])
     nome_vacina, data_alvo = vacinas_pendentes[0]
     dias_restantes = (data_alvo - hoje).days
     
     if dias_restantes < 0:
-        return "🔴 VENCIDA", f"Vacina {nome_vacina} vencida em {data_alvo.strftime('%d/%m/%Y')}"
+        return "🔴", f"Vacina {nome_vacina} vencida em {data_alvo.strftime('%d/%m/%Y')}"
     elif dias_restantes <= 7:
-        return "🟡 CRÍTICA", f"Reforço de {nome_vacina} em {dias_restantes} dias ({data_alvo.strftime('%d/%m/%Y')})"
+        return "🟡", f"Reforço de {nome_vacina} em {dias_restantes} dias ({data_alvo.strftime('%d/%m/%Y')})"
     else:
-        return "🟢 EM DIA", f"Reforço de {nome_vacina} agendado para {data_alvo.strftime('%d/%m/%Y')}"
+        return "🟢", f"Reforço de {nome_vacina} agendado para {data_alvo.strftime('%d/%m/%Y')}"
 
 def verificar_status_carencia(ficha_animal):
     historico = ficha_animal.get("historico_saude", [])
@@ -176,14 +176,13 @@ def verificar_status_carencia(ficha_animal):
                 pass
 
     if not carencias_ativas:
-        return "✅ LIBERADO", "Animal livre de períodos de carência médica."
+        return "✅", "Animal livre"
 
     carencias_ativas.sort(key=lambda x: x[1], reverse=True)
     nome_med, data_liberacao = carencias_ativas[0]
-    return "⚠️ BLOQUEADO", f"Sob efeito de {nome_med}. Liberado apenas em {data_liberacao.strftime('%d/%m/%Y')}"
+    return "⚠️", f"Sob efeito de {nome_med} até {data_liberacao.strftime('%d/%m/%Y')}"
 
 def montar_linha_tempo_pesos(ficha):
-    """Gera uma lista estruturada e ordenada cronologicamente de todas as pesagens."""
     lista_pesos = []
     dt_nasc = ficha["data_nascimento"]
     dt_chegada = ficha.get("data_chegada", dt_nasc)
@@ -210,7 +209,6 @@ def montar_linha_tempo_pesos(ficha):
             dt_p_form = p['data']
         lista_pesos.append({"data_ordem": p['data'], "Fase/Data": dt_p_form, "Peso (kg)": float(p['peso']), "tipo": "rotineiro", "original_idx": idx})
         
-    # Ordenação Cronológica Definitiva por Data de Ocorrência
     lista_pesos.sort(key=lambda x: x["data_ordem"])
     return lista_pesos
 
@@ -345,10 +343,10 @@ st.markdown("""
     <style>
     .stButton > button {
         width: 100% !important;
-        min-height: 44px !important;
-        border-radius: 8px !important;
+        min-height: 38px !important;
+        border-radius: 6px !important;
         font-weight: 600 !important;
-        margin-bottom: 5px !important;
+        padding: 4px 8px !important;
     }
     button[kind="primary"] {
         background-color: #1D2B99 !important;
@@ -370,18 +368,32 @@ st.markdown("""
         color: #FFA500 !important;
         font-weight: bold !important;
     }
-    .animal-card {
-        background-color: #1E1E24;
-        border: 2px solid #3F404C;
-        border-radius: 12px;
-        padding: 16px;
-        margin-bottom: 5px;
-        color: #EAEAEA !important;
-        font-size: 14px;
-        line-height: 1.6;
+    
+    /* Estilo para deixar a tabela compacta e limpa */
+    .custom-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 10px;
     }
-    .animal-card strong {
+    .custom-table th {
+        background-color: #1A1C24;
         color: #FFA500 !important;
+        text-align: left;
+        padding: 10px;
+        font-weight: 600;
+        border-bottom: 2px solid #3F404C;
+    }
+    .custom-table td {
+        padding: 10px;
+        border-bottom: 1px solid #2E303D;
+        color: #EAEAEA;
+        vertical-align: middle;
+    }
+    .status-sign {
+        font-size: 18px;
+        text-align: center;
+        display: inline-block;
+        width: 100%;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -397,6 +409,12 @@ if "menu_atual" not in st.session_state:
     st.session_state.menu_atual = "Painel Geral (Dashboard)"
 
 dados_rebanho = st.session_state.rebanho
+
+# Configuração de gatilho para abrir fichas através da tabela
+for k in dados_rebanho.keys():
+    if st.session_state.get(f"btn_ver_{k}"):
+        st.session_state.visualizar_brinco = k
+        st.session_state[f"btn_ver_{k}"] = False
 
 # ------------------------------------------------------------------------------------------
 # BARRA LATERAL
@@ -469,7 +487,7 @@ if menu == "Painel Geral (Dashboard)":
                     encoded = base64.b64encode(nova_foto.read()).decode("utf-8")
                     dados_rebanho[id_sel]["foto_base64"] = encoded
                     salvar_dados(dados_rebanho)
-                    st.success("Foto salva permanentemente!")
+                    st.success("Foto保存 permanentemente!")
                     st.rerun()
 
         with col_infos:
@@ -487,7 +505,7 @@ if menu == "Painel Geral (Dashboard)":
             st.markdown(f"**Pai (Reprodutor):** {obter_nome_exibicao(p_id, dados_rebanho.get(p_id, {}))}")
             
             status_v, desc_v = verificar_status_vacinal(ficha)
-            st.markdown(f"**Manejo Preventivo:** {status_v if status_v else 'Em dia'} ({desc_v})")
+            st.markdown(f"**Manejo Preventivo:** {status_v} ({desc_v})")
             
         st.markdown("---")
         aba_pesos, aba_saude, aba_crias, aba_notas, aba_editar = st.tabs(["⚖️ Histórico de Peso", "🏥 Histórico de Saúde", "🧬 Crias (Descendentes)", "📝 Notas de Campo", "✏️ Editar Cadastro"])
@@ -598,7 +616,7 @@ if menu == "Painel Geral (Dashboard)":
                 st.success("Anotações salvas!")
                 st.rerun()
 
-        with col_infos if False else aba_editar:
+        with aba_editar:
             st.subheader("✏️ Alterar Dados Cadastrais Completos")
             st.warning("Atenção: Ao alterar o número do brinco, o sistema reestruturará automaticamente o histórico vinculando-o à nova numeração.")
             
@@ -655,7 +673,7 @@ if menu == "Painel Geral (Dashboard)":
                             dados_rebanho[id_sel] = dados_atualizados_animal
                             
                         salvar_dados(dados_rebanho)
-                        st.success("Ficha cadastral actualizada com sucesso na nuvem!")
+                        st.success("Ficha cadastral atualizada com sucesso na nuvem!")
                         st.rerun()
                 
     else:
@@ -674,7 +692,7 @@ if menu == "Painel Geral (Dashboard)":
                     try:
                         pdf_ativos_bytes = gerar_pdf_ativos(ativos)
                         st.download_button(
-                            label="📥 Baixar Lista (PDF)",
+                            label="📥 Baixar Lista Completa (PDF)",
                             data=pdf_ativos_bytes,
                             file_name=f"lista_ativos_{datetime.today().strftime('%Y%m%d')}.pdf",
                             mime="application/pdf",
@@ -685,61 +703,85 @@ if menu == "Painel Geral (Dashboard)":
             
             tab_ativos, tab_inativos = st.tabs(["🟢 Animais Ativos", "🔴 Inativos / Baixas"])
             
+            # MODIFICAÇÃO SOLICITADA: TABELA SIMPLIFICADA E CLEAN
             with tab_ativos:
                 st.subheader("📋 Lista de Animais Ativos")
                 
                 if ativos:
-                    lista_brincos_ativos = list(ativos.keys())
-                    for i in range(0, len(lista_brincos_ativos), 3):
-                        lote_brincos = lista_brincos_ativos[i:i+3]
-                        colunas_grade = st.columns(3)
+                    col_tabela, col_botoes = st.columns([3, 1])
+                    
+                    with col_tabela:
+                        html_table = """
+                        <table class="custom-table">
+                            <thead>
+                                <tr>
+                                    <th>ID / Nome</th>
+                                    <th>Peso Atual</th>
+                                    <th style="text-align: center; width: 100px;">Situação</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                        """
+                        for brinco, f_at in ativos.items():
+                            status_v, _ = verificar_status_vacinal(f_at)
+                            peso_limpo = obter_peso_atual(f_at).split(" (")[0]
+                            html_table += f"""
+                                <tr>
+                                    <td><strong>{obter_nome_exibicao(brinco, f_at)}</strong></td>
+                                    <td>{peso_limpo}</td>
+                                    <td><span class="status-sign">{status_v}</span></td>
+                                </tr>
+                            """
+                        html_table += "</tbody></table>"
+                        st.markdown(html_table, unsafe_allow_html=True)
                         
-                        for idx_col, brinco in enumerate(lote_brincos):
-                            f_at = ativos[brinco]
-                            status_v, desc_v = verificar_status_vacinal(f_at)
-                            status_vacina_rotulo = status_v if status_v else "🟢 EM DIA"
-                            
-                            with colunas_grade[idx_col]:
-                                st.markdown(f"""
-                                <div class="animal-card">
-                                    <strong>ID / Nome:</strong> {obter_nome_exibicao(brinco, f_at)}<br>
-                                    <strong>Raça:</strong> {f_at['raca']}<br>
-                                    <strong>Sexo:</strong> {normalizar_sexo(f_at['sexo'])}<br>
-                                    <strong>Idade:</strong> {calcular_idade(f_at['data_nascimento'])}<br>
-                                    <strong>Vacina:</strong> {status_vacina_rotulo}<br>
-                                    <strong>Peso:</strong> {obter_peso_atual(f_at)}
-                                </div>
-                                """, unsafe_allow_html=True)
-                                
-                                st.button(f"🔎 Abrir Ficha ({brinco})", key=f"abrir_{brinco}")
+                    with col_botoes:
+                        st.markdown("<p style='font-weight: 600; margin-bottom: 12px; color: #FFA500;'>Ações</p>", unsafe_allow_html=True)
+                        for brinco in ativos.keys():
+                            st.button(f"🔎 Abrir Ficha", key=f"btn_ver_{brinco}")
                 else:
                     st.warning("Nenhum animal ativo.")
 
             with tab_inativos:
-                st.subheader("🪵 Animais Fora do Lote")
+                st.subheader("🪵 Animais Fora do Lote (Baixas)")
                 if baixas:
-                    lista_brincos_baixas = list(baixas.keys())
-                    for i in range(0, len(lista_brincos_baixas), 3):
-                        lote_baixas = lista_brincos_baixas[i:i+3]
-                        colunas_grade_in = st.columns(3)
+                    col_tabela_in, col_botoes_in = st.columns([3, 1])
+                    
+                    with col_tabela_in:
+                        html_table_in = """
+                        <table class="custom-table">
+                            <thead>
+                                <tr>
+                                    <th>ID / Nome</th>
+                                    <th>Motivo da Saída</th>
+                                    <th style="text-align: center; width: 100px;">Situação</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                        """
+                        for brinco, f_in in baixas.items():
+                            motivo = f_in['status']
+                            data_s = f_in.get('data_saida', '')
+                            txt_motivo = f"{motivo} ({data_s})" if data_s else motivo
+                            html_table_in += f"""
+                                <tr>
+                                    <td><strong>{obter_nome_exibicao(brinco, f_in)}</strong></td>
+                                    <td>{txt_motivo}</td>
+                                    <td><span class="status-sign">🔴</span></td>
+                                </tr>
+                            """
+                        html_table_in += "</tbody></table>"
+                        st.markdown(html_table_in, unsafe_allow_html=True)
                         
-                        for idx_col, brinco in enumerate(lote_baixas):
-                            f_in = baixas[brinco]
-                            with colunas_grade_in[idx_col]:
-                                st.markdown(f"""
-                                <div class="animal-card">
-                                    <strong>ID / Nome:</strong> {obter_nome_exibicao(brinco, f_in)}<br>
-                                    <strong>Raça:</strong> {f_in['raca']}<br>
-                                    <strong>Sexo:</strong> {normalizar_sexo(f_in['sexo'])}<br>
-                                    <strong>Motivo da Saída:</strong> {f_in['status']} ({f_in.get('data_saida', 'Não Informada')})
-                                </div>
-                                """, unsafe_allow_html=True)
-                                st.button(f"🔎 Abrir Ficha ({brinco})", key=f"abrir_in_{brinco}")
+                    with col_botoes_in:
+                        st.markdown("<p style='font-weight: 600; margin-bottom: 12px; color: #FFA500;'>Ações</p>", unsafe_allow_html=True)
+                        for brinco in baixas.keys():
+                            st.button(f"🔎 Abrir Ficha", key=f"btn_ver_{brinco}")
                 else:
-                    st.info("Nenhuma baixa.")
+                    st.info("Nenhuma baixa registrada.")
 
 # ------------------------------------------------------------------------------------------
-# REGISTRAR ENTRADA (CADASTRO) - AJUSTADO COM DATA DE NASCIMENTO E DATA DE CHEGADA INDEPENDENTES
+# REGISTRAR ENTRADA (CADASTRO)
 # ------------------------------------------------------------------------------------------
 elif menu == "Registrar Entrada (Cadastro)":
     st.header("➕ Registrar Entrada de Animal")
@@ -753,11 +795,9 @@ elif menu == "Registrar Entrada (Cadastro)":
         raca = st.selectbox("Raça", ["Santa Inês", "Dorper", "Texel", "Suffolk", "Sem Raça Definida (SRD)"])
         sexo = st.radio("Sexo", ["Fêmea", "Macho"], horizontal=True)
         
-        # AJUSTE SOLICITADO: Data de Nascimento agora é fixa e obrigatória para qualquer origem
         data_nascimento = st.date_input("Data de Nascimento Real (Estimada ou Exata) *", datetime.today())
         
-        # Exibe um segundo campo de data de chegada apenas se o animal vier de fora (Compra/Doação)
-        if origem_temp != "Procriação (Nascimento)":
+        if origen_temp != "Procriação (Nascimento)":
             data_chegada = st.date_input("Data de Chegada / Entrada na Propriedade", datetime.today())
         else:
             data_chegada = None
