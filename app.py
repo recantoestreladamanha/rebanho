@@ -421,14 +421,12 @@ if menu == "Painel Geral (Dashboard)":
             st.markdown(f"**Idade:** {calcular_idade(ficha['data_nascimento'])} *({ficha['data_nascimento']})*")
             st.markdown(f"**Forma de Entrada:** {ficha.get('origem', 'Não informada')}")
             
-            # Exibição de Filiação (Controle Parental)
             p_id = ficha.get("pai", "Não Informado")
             m_id = ficha.get("mae", "Não Informado")
             st.markdown(f"**Mãe (Matriz):** {obter_nome_exibicao(m_id, dados_rebanho.get(m_id, {}))}")
             st.markdown(f"**Pai (Reprodutor):** {obter_nome_exibicao(p_id, dados_rebanho.get(p_id, {}))}")
             
             status_v, desc_v = verificar_status_vacinal(ficha)
-            status_c, desc_c = verificar_status_carencia(ficha)
             st.markdown(f"**Manejo Preventivo:** {status_v if status_v else 'Em dia'} ({desc_v})")
             
         st.markdown("---")
@@ -504,7 +502,6 @@ if menu == "Painel Geral (Dashboard)":
             st.subheader("🧬 Genealogia - Crias Diretas Registradas")
             filhos_encontrados = []
             
-            # Varre o rebanho para localizar animais onde este animal é pai ou mãe
             for b_id, b_info in dados_rebanho.items():
                 if b_info.get("mae") == id_sel or b_info.get("pai") == id_sel:
                     filhos_encontrados.append({
@@ -611,10 +608,14 @@ if menu == "Painel Geral (Dashboard)":
                     st.info("Nenhuma baixa.")
 
 # ------------------------------------------------------------------------------------------
-# REGISTRAR ENTRADA (CADASTRO) - COM CONTROLE PARENTAL CONDICIONAL INTELIGENTE
+# REGISTRAR ENTRADA (CADASTRO) - COM RÓTULO DINÂMICO DE DATA BASEADO NA ORIGEM
 # ------------------------------------------------------------------------------------------
 elif menu == "Registrar Entrada (Cadastro)":
     st.header("➕ Registrar Entrada de Animal")
+    
+    # Armazena temporariamente a escolha de origem fora do formulário para tornar a tela dinâmica em tempo real
+    origem_temp = st.selectbox("Forma de Entrada / Origem", ["Compra", "Procriação (Nascimento)", "Doação"], key="origem_seletor_topo")
+    st.markdown("---")
     
     with st.form("form_entrada", clear_on_submit=True):
         col_id, col_nome = st.columns(2)
@@ -625,13 +626,14 @@ elif menu == "Registrar Entrada (Cadastro)":
             
         raca = st.selectbox("Raça", ["Santa Inês", "Dorper", "Texel", "Suffolk", "Sem Raça Definida (SRD)"])
         sexo = st.radio("Sexo", ["Fêmea", "Macho"], horizontal=True)
-        data_nascimento = st.date_input("Data de Nascimento/Chegada", datetime.today())
-        origem = st.selectbox("Forma de Entrada", ["Compra", "Procriação (Nascimento)", "Doação"])
         
-        # Lógica de Controle Parental Inteligente Baseada na Origem
+        # Ajuste do Título da Data baseado na forma de entrada (Cria ou Compra)
+        rotulo_data = "Data de Nascimento da Cria" if origem_temp == "Procriação (Nascimento)" else "Data de Chegada/Compra"
+        data_nascimento = st.date_input(rotulo_data, datetime.today())
+        
+        # Lógica de Controle Parental Inteligente
         st.markdown("#### 🧬 Controle Parental (Genealogia)")
         
-        # Mapeia todas as possíveis matrizes (fêmeas) e reprodutores (machos) já cadastrados
         opcoes_maes = {"": "Selecione a matriz..."}
         opcoes_pais = {"Não Informado": "Não Informado"}
         
@@ -642,7 +644,6 @@ elif menu == "Registrar Entrada (Cadastro)":
             elif sexo_normalizado == "Macho":
                 opcoes_pais[k] = obter_nome_exibicao(k, v)
         
-        # Exibe os seletores dinâmicos
         mae_selecionada = st.selectbox("Mãe (Matriz) *Obrigatório para Procriação*", list(opcoes_maes.keys()), format_func=lambda x: opcoes_maes[x])
         pai_selecionado = st.selectbox("Pai (Reprodutor)", list(opcoes_pais.keys()), format_func=lambda x: opcoes_pais[x])
         
@@ -658,22 +659,21 @@ elif menu == "Registrar Entrada (Cadastro)":
                 st.error("Animal já cadastrado.")
             elif peso_informado <= 0:
                 st.error("Por favor, informe o peso de entrada do animal.")
-            elif origem == "Procriação (Nascimento)" and not mae_selecionada:
+            elif origem_temp == "Procriação (Nascimento)" and not mae_selecionada:
                 st.error("Para animais nascidos na propriedade (Procriação), a indicação da Mãe (Matriz) é obrigatória.")
             else:
-                p_nasc = peso_informado if origem == "Procriação (Nascimento)" else 0.0
-                p_entrada = peso_informado if origem != "Procriação (Nascimento)" else 0.0
+                p_nasc = peso_informado if origem_temp == "Procriação (Nascimento)" else 0.0
+                p_entrada = peso_informado if origem_temp != "Procriação (Nascimento)" else 0.0
                 
-                # Trata a genealogia baseado na origem real do animal
-                salvar_mae = mae_selecionada if origem == "Procriação (Nascimento)" else "Não Informado"
-                salvar_pai = pai_selecionado if origem == "Procriação (Nascimento)" else "Não Informado"
+                salvar_mae = mae_selecionada if origem_temp == "Procriação (Nascimento)" else "Não Informado"
+                salvar_pai = pai_selecionado if origem_temp == "Procriação (Nascimento)" else "Não Informado"
                 
                 dados_rebanho[id_brinco] = {
                     "nome": nome_animal.strip(),
                     "raca": raca,
                     "sexo": sexo,
                     "data_nascimento": str(data_nascimento),
-                    "origem": origem,
+                    "origem": origem_temp,
                     "peso_nascer": p_nasc,
                     "peso_desmame": 0.0,
                     "peso_entrada": p_entrada,
